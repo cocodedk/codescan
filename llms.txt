@@ -1,0 +1,76 @@
+# CodeScan - LLM Reference
+
+## Project Overview
+Static Python code analyzer with Neo4j integration for code relationship mapping. Parses Python AST and stores classes, functions, call graphs in Neo4j graph database.
+
+## File Structure
+- `scanner.py` - Main CLI tool for scanning codebases
+- `codescan_mcp_server.py` - MCP server exposing graph queries
+- `run_mcp_stdio_server.sh` - Shell script to launch MCP server
+- `docker-compose.yaml` - Neo4j container setup
+- `.env.example` / `example.env` - Environment configuration template
+
+## Key Classes/Functions
+
+### scanner.py
+- `CodeAnalyzer` - AST visitor class
+  - `visit_ClassDef()` - Extract class metadata
+  - `visit_FunctionDef()` - Extract function metadata
+  - `visit_Call()` - Extract call relationships
+- `scan_directory()` - Main scanning orchestration
+- `create_graph()` - Neo4j node/relationship creation
+- `process_file()` - Individual file processing
+
+### codescan_mcp_server.py
+- MCP tools: `list_files`, `file_contents`, `list_functions`, `list_classes`
+- Call graph tools: `callees`, `callers`, `transitive_calls`, `most_called_functions`
+- Test analysis: `untested_functions`, `test_coverage_ratio`, `tests_for_function`
+- Analysis: `recursive_functions`, `classes_with_most_methods`, `repetitive_constants`
+
+## Neo4j Graph Schema
+**Nodes:**
+- `:File` - Source files (props: path, type, is_test, is_example)
+- `:Class` - Classes (props: name, file, line, end_line)
+- `:Function` - Functions (props: name, file, line, end_line, length)
+- `:ReferenceFunction` - External function references
+- `:Constant` - Module-level constants (props: name, value, type, scope)
+- `:Test`, `:TestFile`, `:TestFunction`, `:TestClass` - Test markers
+
+**Relationships:**
+- `(:File)-[:CONTAINS]->(:Class|:Function|:Constant)`
+- `(:Class)-[:CONTAINS]->(:Function)` - Class methods
+- `(:Function)-[:CALLS {line, args}]->(:Function|:ReferenceFunction)`
+- `(:TestFunction)-[:TESTS]->(:Function|:Class)`
+
+## Configuration (.env)
+```
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+NEO4J_HOST=localhost
+NEO4J_PORT_BOLT=7687
+PROJECT_DIR=/path/to/project
+```
+
+## Running
+```bash
+# Start Neo4j
+docker-compose up -d
+
+# Scan codebase
+python scanner.py
+
+# Start MCP server
+./run_mcp_stdio_server.sh
+
+# With custom project dir
+python scanner.py --project-dir /path/to/project
+python scanner.py --verbose
+python scanner.py --quiet
+```
+
+## Neo4j Query Examples
+```cypher
+MATCH (n) RETURN n
+MATCH (f:Function) RETURN f.name, f.file, f.length ORDER BY f.length DESC LIMIT 10
+MATCH (f:File)-[:CONTAINS]->(n) RETURN f.path, count(n) ORDER BY count(n) DESC LIMIT 10
+```
