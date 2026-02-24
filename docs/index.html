@@ -3,7 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeScan - Python Static Code Analyzer</title>
+    <title>CodeScan - Python Static Code Analyzer with Neo4j</title>
+    <meta name="description" content="CodeScan: Python static code analyzer with Neo4j graph database integration. Extract call graphs, test coverage, code relationships. MCP server for Cursor IDE.">
+    <meta name="keywords" content="Python code analyzer, Neo4j, static analysis, AST parser, call graph, code visualization, MCP server, Cursor IDE, code scanner, Python AST">
+    <meta name="author" content="Babak Bandey">
+    <meta name="theme-color" content="#0d1117">
+    <meta property="og:title" content="CodeScan - Python Static Code Analyzer">
+    <meta property="og:description" content="Extract call graphs, test coverage, and code relationships from Python codebases. Neo4j integration with MCP server for Cursor IDE.">
+    <meta property="og:type" content="software">
+    <meta property="og:url" content="https://cocode.dk/codescan/">
+    <meta property="og:image" content="https://cocode.dk/codescan/og-image.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="CodeScan - Python Static Code Analyzer">
+    <meta name="twitter:description" content="Python static code analyzer with Neo4j integration. MCP server for Cursor IDE.">
+    <link rel="canonical" href="https://cocode.dk/codescan/">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+    <link rel="alternate" hreflang="en" href="https://cocode.dk/codescan/">
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "CodeScan",
+        "description": "Python static code analyzer with Neo4j graph database integration for code relationship mapping",
+        "url": "https://cocode.dk/codescan",
+        "author": {
+            "@type": "Person",
+            "name": "Babak Bandey",
+            "url": "https://cocode.dk"
+        },
+        "programmingLanguage": "Python",
+        "applicationCategory": "DeveloperTools",
+        "license": "MIT",
+        "repository": {
+            "@type": "SoftwareSourceCode",
+            "url": "https://github.com/cocodedk/codescan"
+        }
+    }
+    </script>
     <style>
         :root {
             --bg-primary: #0d1117;
@@ -97,6 +133,21 @@
         .badge.python { color: #f7c243; }
         .badge.neo4j { color: #018bff; }
         .badge.ast { color: var(--accent-green); }
+        
+        .author {
+            margin-top: 20px;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+        
+        .author a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        
+        .author a:hover {
+            text-decoration: underline;
+        }
         
         section {
             margin: 50px 0;
@@ -261,6 +312,21 @@
             font-size: 0.9rem;
         }
         
+        .footer-links {
+            margin-bottom: 15px;
+        }
+        
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin: 0 15px;
+            transition: color 0.3s;
+        }
+        
+        .footer-links a:hover {
+            color: var(--accent);
+        }
+        
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -287,10 +353,32 @@
             color: var(--text-secondary);
         }
         
+        .brand-links {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .brand-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.95rem;
+        }
+        
+        .brand-link:hover {
+            color: var(--accent);
+        }
+        
         @media (max-width: 600px) {
             .logo { font-size: 2.5rem; }
             .stats-grid { grid-template-columns: 1fr; }
             .cta-buttons { flex-direction: column; }
+            .brand-links { flex-direction: column; gap: 15px; }
         }
     </style>
 </head>
@@ -304,6 +392,11 @@
                 <span class="badge neo4j">Neo4j</span>
                 <span class="badge ast">AST Parsing</span>
                 <span class="badge">MCP Server</span>
+                <span class="badge">Cursor IDE</span>
+            </div>
+            <div class="author">
+                Built by <a href="https://cocode.dk" target="_blank" rel="noopener">Babak Bandey</a> · 
+                <a href="https://github.com/cocodedk/codescan" target="_blank" rel="noopener">GitHub</a>
             </div>
         </header>
 
@@ -409,12 +502,23 @@
                 </code>
             </div>
             <div class="cta-buttons">
-                <a href="https://github.com/cocodedk/codescan" class="btn btn-primary">View on GitHub</a>
+                <a href="https://github.com/cocodedk/codescan" class="btn btn-primary" target="_blank" rel="noopener">View on GitHub</a>
                 <a href="./scanner_usage.html" class="btn btn-secondary">Documentation</a>
             </div>
         </section>
 
         <footer>
+            <div class="brand-links">
+                <a href="https://cocode.dk" target="_blank" rel="noopener" class="brand-link">
+                    🌐 cocode.dk
+                </a>
+                <a href="https://github.com/cocodedk/codescan" target="_blank" rel="noopener" class="brand-link">
+                    📂 GitHub
+                </a>
+                <a href="https://github.com/cocodedk" target="_blank" rel="noopener" class="brand-link">
+                    👤 Babak Bandey
+                </a>
+            </div>
             <p>CodeScan &copy; 2024 &mdash; MIT License</p>
         </footer>
     </div>
