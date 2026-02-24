@@ -1,35 +1,41 @@
 import ast
+from typing import Any, Optional
 from .constants import BUILTIN_FUNCTIONS, TEST_FUNCTION_PREFIXES
-from .utils import is_stdlib_module
+from .utils import is_stdlib_module, is_example_file
 from .stats_collector import StatsCollector
 
+
 class CodeAnalyzer(ast.NodeVisitor):
-    def __init__(self, file_path, session, is_test_file=False, stats_collector=None):
-        self.file_path = file_path
-        self.session = session
-        self.current_class = None
-        self.current_function = None
-        self.is_test_file = is_test_file
-        self.is_example_file = self._is_example_file(file_path)
-        self.current_scope = "module"  # Track current scope for constants
+    def __init__(
+        self,
+        file_path: str,
+        session: Any,
+        is_test_file: bool = False,
+        stats_collector: Optional[StatsCollector] = None,
+        skip_dunder_methods: bool = True,
+    ):
+        self.file_path: str = file_path
+        self.session: Any = session
+        self.current_class: Optional[str] = None
+        self.current_function: Optional[str] = None
+        self.is_test_file: bool = is_test_file
+        self.is_example_file: bool = is_example_file(file_path)
+        self.current_scope: str = "module"
+        self.skip_dunder_methods: bool = skip_dunder_methods
 
         # Use provided stats collector or create a new one
-        self.stats = stats_collector if stats_collector is not None else StatsCollector()
-
-    def _is_example_file(self, file_path):
-        """
-        Local method to check if a file is an example file.
-        This is a duplicate of the is_example_file function from utils.py,
-        but used here to avoid circular imports.
-        """
-        import os
-        normalized_path = os.path.normpath(file_path).replace('\\', '/')
-        path_parts = normalized_path.split('/')
-        return '/examples/' in normalized_path or 'examples/' in normalized_path or any(part == 'examples' for part in path_parts)
+        self.stats: StatsCollector = (
+            stats_collector if stats_collector is not None else StatsCollector()
+        )
 
     def visit_ClassDef(self, node):
         class_name = node.name
-        line_num = getattr(node, 'lineno', -1)
+        line_num = getattr(node, "lineno", -1)
+        end_line_num = getattr(node, "end_lineno", -1)
+
+        class_length = 0
+        if line_num >= 0 and end_line_num >= 0:
+            class_length = end_line_num - line_num + 1
 
         # Register class with stats collector
         self.stats.register_class(
@@ -37,7 +43,7 @@ class CodeAnalyzer(ast.NodeVisitor):
             file_path=self.file_path,
             line=line_num,
             is_test=self.is_test_file,
-            is_example=self.is_example_file
+            is_example=self.is_example_file,
         )
 
         self.current_class = class_name
@@ -49,27 +55,30 @@ class CodeAnalyzer(ast.NodeVisitor):
         # Choose appropriate labels based on file type
         if self.is_test_file:
             self.session.run(
-                "MERGE (c:Class:Test:TestClass {name: $name, file: $file, line: $line, end_line: $end_line})",
+                "MERGE (c:Class:Test:TestClass {name: $name, file: $file, line: $line, end_line: $end_line, length: $length})",
                 name=class_name,
                 file=self.file_path,
                 line=line_num,
-                end_line=getattr(node, 'end_lineno', -1)
+                end_line=end_line_num,
+                length=class_length,
             )
         elif self.is_example_file:
             self.session.run(
-                "MERGE (c:Class:Example:ExampleClass {name: $name, file: $file, line: $line, end_line: $end_line})",
+                "MERGE (c:Class:Example:ExampleClass {name: $name, file: $file, line: $line, end_line: $end_line, length: $length})",
                 name=class_name,
                 file=self.file_path,
                 line=line_num,
-                end_line=getattr(node, 'end_lineno', -1)
+                end_line=end_line_num,
+                length=class_length,
             )
         else:
             self.session.run(
-                "MERGE (c:Class {name: $name, file: $file, line: $line, end_line: $end_line})",
+                "MERGE (c:Class {name: $name, file: $file, line: $line, end_line: $end_line, length: $length})",
                 name=class_name,
                 file=self.file_path,
                 line=line_num,
-                end_line=getattr(node, 'end_lineno', -1)
+                end_line=end_line_num,
+                length=class_length,
             )
 
         self.generic_visit(node)
@@ -80,24 +89,34 @@ class CodeAnalyzer(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         function_name = node.name
 
-        # Skip special methods and private methods if desired
-        if function_name.startswith('__') and function_name.endswith('__'):
+        # Skip special methods and private methods if configured
+        if (
+            self.skip_dunder_methods
+            and function_name.startswith("__")
+            and function_name.endswith("__")
+        ):
             self.stats.register_skipped_file(
                 file_path=self.file_path,
-                reason=f"Skipping dunder method: {function_name}"
+                reason=f"Skipping dunder method: {function_name}",
             )
             return
 
         # Get line number information
-        line_num = getattr(node, 'lineno', -1)
-        end_line_num = getattr(node, 'end_lineno', -1)
+        line_num = getattr(node, "lineno", -1)
+        end_line_num = getattr(node, "end_lineno", -1)
 
         # Calculate function length (number of lines)
         function_length = 0
         if line_num >= 0 and end_line_num >= 0:
-            function_length = end_line_num - line_num + 1  # +1 to include the function definition line
+            function_length = (
+                end_line_num - line_num + 1
+            )  # +1 to include the function definition line
 
-        full_name = f"{self.current_class}.{function_name}" if self.current_class else function_name
+        full_name = (
+            f"{self.current_class}.{function_name}"
+            if self.current_class
+            else function_name
+        )
         self.current_function = full_name
 
         # Register function with stats collector
@@ -107,7 +126,7 @@ class CodeAnalyzer(ast.NodeVisitor):
             line=line_num,
             is_test=self.is_test_file,
             is_reference=False,
-            length=function_length
+            length=function_length,
         )
 
         # Save previous scope and set current scope to function
@@ -133,7 +152,7 @@ class CodeAnalyzer(ast.NodeVisitor):
             MATCH (f{labels} {{name: $name, is_reference: true}})
             RETURN f
             """,
-            name=function_name
+            name=function_name,
         ).data()
 
         # First create or update the function node
@@ -152,7 +171,7 @@ class CodeAnalyzer(ast.NodeVisitor):
             file=self.file_path,
             line=line_num,
             end_line=end_line_num,
-            length=function_length
+            length=function_length,
         )
 
         # If we previously created a reference node for this function by name only,
@@ -170,7 +189,7 @@ class CodeAnalyzer(ast.NodeVisitor):
                 simple_name=function_name,
                 full_name=full_name,
                 file=self.file_path,
-                edge_color="#FF9800"  # Orange for calls relationships
+                edge_color="#FF9800",  # Orange for calls relationships
             )
         if self.current_class:
             self.session.run(
@@ -183,7 +202,7 @@ class CodeAnalyzer(ast.NodeVisitor):
                 class_name=self.current_class,
                 func_name=full_name,
                 file=self.file_path,
-                edge_color="#9C27B0"  # Purple for contains relationships
+                edge_color="#9C27B0",  # Purple for contains relationships
             )
         self.generic_visit(node)
         self.current_function = None
@@ -208,9 +227,9 @@ class CodeAnalyzer(ast.NodeVisitor):
                 # 1. All uppercase
                 # 2. Contains at least one underscore
                 # 3. Not just a single character
-                if name.isupper() and '_' in name and len(name) > 1:
-                    line_num = getattr(node, 'lineno', -1)
-                    end_line_num = getattr(node, 'end_lineno', -1)
+                if name.isupper() and "_" in name and len(name) > 1:
+                    line_num = getattr(node, "lineno", -1)
+                    end_line_num = getattr(node, "end_lineno", -1)
 
                     # Get the value and type of the constant
                     value, value_type = self._extract_constant_value(node.value)
@@ -221,7 +240,7 @@ class CodeAnalyzer(ast.NodeVisitor):
                         file_path=self.file_path,
                         line=line_num,
                         value=value,
-                        type_name=value_type
+                        type_name=value_type,
                     )
 
                     # Determine the container based on current scope
@@ -233,7 +252,15 @@ class CodeAnalyzer(ast.NodeVisitor):
                         container_name = self.current_function
 
                     # Create the constant node
-                    self._create_constant_node(name, value, value_type, line_num, end_line_num, container_type, container_name)
+                    self._create_constant_node(
+                        name,
+                        value,
+                        value_type,
+                        line_num,
+                        end_line_num,
+                        container_type,
+                        container_name,
+                    )
 
         self.generic_visit(node)
 
@@ -253,33 +280,52 @@ class CodeAnalyzer(ast.NodeVisitor):
         if isinstance(value_node, ast.Constant):
             # Handle basic types (str, int, float, bool, None)
             python_value = value_node.value
-            type_name = type(python_value).__name__ if python_value is not None else "NoneType"
+            type_name = (
+                type(python_value).__name__ if python_value is not None else "NoneType"
+            )
             string_value = repr(python_value)
             return string_value, type_name
 
         elif isinstance(value_node, ast.List):
             # Handle lists
-            return f"[{', '.join(self._extract_constant_value(item)[0] for item in value_node.elts)}]", "list"
+            return (
+                f"[{', '.join(self._extract_constant_value(item)[0] for item in value_node.elts)}]",
+                "list",
+            )
 
         elif isinstance(value_node, ast.Dict):
             # Handle dictionaries
-            keys = [self._extract_constant_value(k)[0] if k is not None else "None" for k in value_node.keys]
-            values = [self._extract_constant_value(v)[0] if v is not None else "None" for v in value_node.values]
+            keys = [
+                self._extract_constant_value(k)[0] if k is not None else "None"
+                for k in value_node.keys
+            ]
+            values = [
+                self._extract_constant_value(v)[0] if v is not None else "None"
+                for v in value_node.values
+            ]
             items = [f"{k}: {v}" for k, v in zip(keys, values)]
             return f"{{{', '.join(items)}}}", "dict"
 
         elif isinstance(value_node, ast.Tuple):
             # Handle tuples
-            return f"({', '.join(self._extract_constant_value(item)[0] for item in value_node.elts)})", "tuple"
+            return (
+                f"({', '.join(self._extract_constant_value(item)[0] for item in value_node.elts)})",
+                "tuple",
+            )
 
         elif isinstance(value_node, ast.Set):
             # Handle sets
-            return f"{{{', '.join(self._extract_constant_value(item)[0] for item in value_node.elts)}}}", "set"
+            return (
+                f"{{{', '.join(self._extract_constant_value(item)[0] for item in value_node.elts)}}}",
+                "set",
+            )
 
         elif isinstance(value_node, ast.UnaryOp):
             # Handle unary operations like -1
             if isinstance(value_node.op, ast.USub):
-                operand_value, operand_type = self._extract_constant_value(value_node.operand)
+                operand_value, operand_type = self._extract_constant_value(
+                    value_node.operand
+                )
                 return f"-{operand_value}", operand_type
             else:
                 return str(ast.dump(value_node)), "expression"
@@ -288,7 +334,16 @@ class CodeAnalyzer(ast.NodeVisitor):
             # For other types or complex expressions, return a simplified representation
             return str(ast.dump(value_node)), "expression"
 
-    def _create_constant_node(self, name, value, value_type, line_num, end_line_num, container_type, container_name=None):
+    def _create_constant_node(
+        self,
+        name,
+        value,
+        value_type,
+        line_num,
+        end_line_num,
+        container_type,
+        container_name=None,
+    ):
         """
         Create a Constant node in the Neo4j database and link it to its container.
 
@@ -321,7 +376,7 @@ class CodeAnalyzer(ast.NodeVisitor):
             file=self.file_path,
             line=line_num,
             end_line=end_line_num,
-            scope=container_type
+            scope=container_type,
         ).single()
 
         # Create relationship to container
@@ -341,7 +396,7 @@ class CodeAnalyzer(ast.NodeVisitor):
                 class_name=container_name,
                 file=self.file_path,
                 line=line_num,
-                edge_color="#E91E63"  # Pink for defines relationships
+                edge_color="#E91E63",  # Pink for defines relationships
             )
         elif container_type == "function" and container_name:
             # Link to function
@@ -355,13 +410,13 @@ class CodeAnalyzer(ast.NodeVisitor):
                 function_name=container_name,
                 file=self.file_path,
                 line=line_num,
-                edge_color="#E91E63"  # Pink for defines relationships
+                edge_color="#E91E63",  # Pink for defines relationships
             )
 
     def visit_Call(self, node):
         module_name = None
         # Get line number information for the call
-        line_num = getattr(node, 'lineno', -1)
+        line_num = getattr(node, "lineno", -1)
 
         # Extract both function name and module if available
         if isinstance(node.func, ast.Name):
@@ -382,7 +437,7 @@ class CodeAnalyzer(ast.NodeVisitor):
                 arg_names.append(repr(arg.value))
             else:
                 arg_names.append(ast.dump(arg))
-        args_str = ', '.join(arg_names)
+        args_str = ", ".join(arg_names)
 
         # Skip built-in functions and standard library calls
         if called_func in BUILTIN_FUNCTIONS:
@@ -398,7 +453,7 @@ class CodeAnalyzer(ast.NodeVisitor):
                 callee=called_func,
                 file_path=self.file_path,
                 line=line_num,
-                args=args_str
+                args=args_str,
             )
 
         if called_func and self.current_function:
@@ -408,13 +463,13 @@ class CodeAnalyzer(ast.NodeVisitor):
                 MATCH (f:Function {name: $name})
                 RETURN f.file AS file
                 """,
-                name=called_func
+                name=called_func,
             ).data()
 
             # If the function has been defined in a file we know about, use that
-            if result and result[0]['file'] is not None:
+            if result and result[0]["file"] is not None:
                 # Use the first file we found that defined this function
-                known_file = result[0]['file']
+                known_file = result[0]["file"]
                 self.session.run(
                     """
                     MATCH (called:Function {name: $called_name, file: $known_file})
@@ -428,7 +483,7 @@ class CodeAnalyzer(ast.NodeVisitor):
                     caller_file=self.file_path,
                     edge_color="#FF9800",  # Orange for calls relationships
                     line=line_num,
-                    args=args_str
+                    args=args_str,
                 )
             else:
                 # Function not yet defined anywhere we've seen, create a reference node
@@ -444,7 +499,7 @@ class CodeAnalyzer(ast.NodeVisitor):
                     file=self.file_path,
                     line=line_num,
                     end_line=-1,
-                    args=args_str
+                    args=args_str,
                 )
 
                 # Register reference function with stats collector
@@ -452,7 +507,7 @@ class CodeAnalyzer(ast.NodeVisitor):
                     name=called_func,
                     file_path=self.file_path,
                     line=line_num,
-                    is_reference=True
+                    is_reference=True,
                 )
 
         self.generic_visit(node)
@@ -468,19 +523,23 @@ class CodeAnalyzer(ast.NodeVisitor):
             if self.is_test_file:
                 # Register import with stats collector
                 self.stats.register_import(
-                    name=imported_name,
-                    file_path=self.file_path,
-                    is_test=True
+                    name=imported_name, file_path=self.file_path, is_test=True
                 )
 
                 # Track imports for later analysis of test relationships
-                self.session.run("""
+                self.session.run(
+                    """
                     MERGE (i:Import {name: $name, alias: $alias, file: $file})
                     WITH i
                     MATCH (f:Function {name: $func_name, file: $file})
                     MERGE (f)-[:IMPORTS {color: $edge_color}]->(i)
-                """, name=imported_name, alias=alias_name, file=self.file_path,
-                    func_name=self.current_function, edge_color="#4CAF50")  # Green for imports
+                """,
+                    name=imported_name,
+                    alias=alias_name,
+                    file=self.file_path,
+                    func_name=self.current_function,
+                    edge_color="#4CAF50",
+                )  # Green for imports
 
         self.generic_visit(node)
 
@@ -497,19 +556,24 @@ class CodeAnalyzer(ast.NodeVisitor):
             if self.is_test_file:
                 # Register import with stats collector
                 self.stats.register_import(
-                    name=full_import,
-                    file_path=self.file_path,
-                    is_test=True
+                    name=full_import, file_path=self.file_path, is_test=True
                 )
 
                 # Track imports for later analysis of test relationships
-                self.session.run("""
+                self.session.run(
+                    """
                     MERGE (i:Import {name: $name, module: $module, alias: $alias, file: $file})
                     WITH i
                     MATCH (f:Function {name: $func_name, file: $file})
                     MERGE (f)-[:IMPORTS {color: $edge_color}]->(i)
-                """, name=imported_name, module=module, alias=alias_name,
-                    file=self.file_path, func_name=self.current_function, edge_color="#4CAF50")
+                """,
+                    name=imported_name,
+                    module=module,
+                    alias=alias_name,
+                    file=self.file_path,
+                    func_name=self.current_function,
+                    edge_color="#4CAF50",
+                )
 
         self.generic_visit(node)
 
@@ -525,31 +589,46 @@ class CodeAnalyzer(ast.NodeVisitor):
             return
 
         # Use custom patterns if provided, otherwise use defaults from constants
-        function_prefixes = custom_patterns['test_funcs'] if custom_patterns and 'test_funcs' in custom_patterns else TEST_FUNCTION_PREFIXES
+        function_prefixes = (
+            custom_patterns["test_funcs"]
+            if custom_patterns and "test_funcs" in custom_patterns
+            else TEST_FUNCTION_PREFIXES
+        )
 
         # Process based on configurable naming patterns
         for prefix in function_prefixes:
             prefix_len = len(prefix)
-            self.session.run("""
+            self.session.run(
+                """
                 MATCH (test:TestFunction)
                 WHERE test.name STARTS WITH $prefix
                 WITH test, substring(test.name, $prefix_len) AS tested_name
                 MATCH (prod:Function)
                 WHERE NOT prod:TestFunction AND prod.name = tested_name
                 MERGE (test)-[:TESTS {method: 'naming_pattern', color: $edge_color}]->(prod)
-            """, prefix=prefix, prefix_len=prefix_len, edge_color="#3F51B5")  # Indigo for tests
+            """,
+                prefix=prefix,
+                prefix_len=prefix_len,
+                edge_color="#3F51B5",
+            )  # Indigo for tests
 
         # Process based on imports
-        self.session.run("""
+        self.session.run(
+            """
             MATCH (test:TestFunction)-[:IMPORTS]->(i:Import)
             MATCH (prod:Function)
             WHERE NOT prod:TestFunction AND prod.name = i.name
             MERGE (test)-[:TESTS {method: 'import', color: $edge_color}]->(prod)
-        """, edge_color="#3F51B5")
+        """,
+            edge_color="#3F51B5",
+        )
 
         # Process based on calls
-        self.session.run("""
+        self.session.run(
+            """
             MATCH (test:TestFunction)-[:CALLS]->(prod:Function)
             WHERE NOT prod:TestFunction
             MERGE (test)-[:TESTS {method: 'call', color: $edge_color}]->(prod)
-        """, edge_color="#3F51B5")
+        """,
+            edge_color="#3F51B5",
+        )

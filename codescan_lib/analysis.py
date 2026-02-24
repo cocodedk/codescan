@@ -8,8 +8,15 @@ from .utils import is_test_file, is_example_file, is_project_file, get_relative_
 from .analyzer import CodeAnalyzer
 from .stats_collector import StatsCollector
 
-def analyze_file(file_path: str, session, base_dir: str, stats_collector: Optional[StatsCollector] = None,
-                custom_patterns: Optional[Dict[str, Any]] = None) -> None:
+
+def analyze_file(
+    file_path: str,
+    session,
+    base_dir: str,
+    stats_collector: Optional[StatsCollector] = None,
+    custom_patterns: Optional[Dict[str, Any]] = None,
+    skip_dunder_methods: bool = True,
+) -> None:
     """
     Analyze a single Python file and add its content to the graph database.
 
@@ -19,6 +26,7 @@ def analyze_file(file_path: str, session, base_dir: str, stats_collector: Option
         base_dir: Base directory of the project for relative path computation
         stats_collector: Statistics collector to use
         custom_patterns: Dictionary with custom test detection patterns
+        skip_dunder_methods: Whether to skip dunder methods (default: True)
     """
     # Use provided stats collector or create a new one
     stats = stats_collector if stats_collector is not None else StatsCollector()
@@ -35,7 +43,9 @@ def analyze_file(file_path: str, session, base_dir: str, stats_collector: Option
     is_test_flag = is_test_file(rel_path, custom_patterns)
     is_example_flag = is_example_file(rel_path)
 
-    file_type = "test" if is_test_flag else "example" if is_example_flag else "production"
+    file_type = (
+        "test" if is_test_flag else "example" if is_example_flag else "production"
+    )
 
     # Register file with stats collector
     stats.register_file(rel_path, file_type)
@@ -60,14 +70,20 @@ def analyze_file(file_path: str, session, base_dir: str, stats_collector: Option
         path=rel_path,
         type=file_type,
         is_test=is_test_flag,
-        is_example=is_example_flag
+        is_example=is_example_flag,
     )
 
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             tree = ast.parse(f.read(), filename=file_path)
             # Pass the test file flag and stats collector to CodeAnalyzer
-            analyzer = CodeAnalyzer(rel_path, session, is_test_file=is_test_flag, stats_collector=stats)
+            analyzer = CodeAnalyzer(
+                rel_path,
+                session,
+                is_test_file=is_test_flag,
+                stats_collector=stats,
+                skip_dunder_methods=skip_dunder_methods,
+            )
             analyzer.visit(tree)
 
             # Process test relationships if this is a test file
@@ -82,7 +98,7 @@ def analyze_file(file_path: str, session, base_dir: str, stats_collector: Option
                 MATCH (c:Class {file: $path})
                 MERGE (f)-[:CONTAINS {color: "#2196F3"}]->(c)
                 """,
-                path=rel_path
+                path=rel_path,
             )
 
             # Link File to its Functions (that aren't in classes)
@@ -95,7 +111,7 @@ def analyze_file(file_path: str, session, base_dir: str, stats_collector: Option
                 }
                 MERGE (f)-[:CONTAINS {color: "#2196F3"}]->(func)
                 """,
-                path=rel_path
+                path=rel_path,
             )
 
             # Link File to its Constants (that aren't in classes or functions)
@@ -105,16 +121,25 @@ def analyze_file(file_path: str, session, base_dir: str, stats_collector: Option
                 MATCH (const:Constant {file: $path, scope: 'module'})
                 MERGE (f)-[:CONTAINS {color: "#2196F3"}]->(const)
                 """,
-                path=rel_path
+                path=rel_path,
             )
 
     except SyntaxError as e:
         stats.register_file_error(rel_path, "SyntaxError", str(e))
     except UnicodeDecodeError:
-        stats.register_file_error(rel_path, "UnicodeDecodeError", "Unable to decode file")
+        stats.register_file_error(
+            rel_path, "UnicodeDecodeError", "Unable to decode file"
+        )
 
-def analyze_directory(directory: str, session, ignore_dirs: Optional[List[str]] = None,
-                    custom_patterns: Optional[Dict[str, Any]] = None, verbose: bool = False) -> StatsCollector:
+
+def analyze_directory(
+    directory: str,
+    session,
+    ignore_dirs: Optional[List[str]] = None,
+    custom_patterns: Optional[Dict[str, Any]] = None,
+    verbose: bool = False,
+    skip_dunder_methods: bool = True,
+) -> StatsCollector:
     """
     Recursively analyze all Python files in a directory and its subdirectories.
 
@@ -124,6 +149,7 @@ def analyze_directory(directory: str, session, ignore_dirs: Optional[List[str]] 
         ignore_dirs: List of directory names to ignore (defaults to IGNORE_DIRS)
         custom_patterns: Dictionary with custom test detection patterns
         verbose: Whether to print verbose output during scanning
+        skip_dunder_methods: Whether to skip dunder methods (default: True)
 
     Returns:
         Statistics collector with information about the analysis
@@ -153,7 +179,14 @@ def analyze_directory(directory: str, session, ignore_dirs: Optional[List[str]] 
             for file in files:
                 if file.endswith(".py"):
                     full_path = os.path.join(root, file)
-                    analyze_file(full_path, session, base_dir, stats, custom_patterns)
+                    analyze_file(
+                        full_path,
+                        session,
+                        base_dir,
+                        stats,
+                        custom_patterns,
+                        skip_dunder_methods,
+                    )
                     pbar.update(1)
 
     # Return the stats collector for the caller to use
