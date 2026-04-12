@@ -1,7 +1,7 @@
 import os
 import sys
 import fnmatch
-from .constants import IGNORE_DIRS, TEST_DIR_PATTERNS, TEST_FILE_PATTERNS
+from .constants import TEST_DIR_PATTERNS, TEST_FILE_PATTERNS
 
 def is_stdlib_module(module_name):
     """Check if a module is part of the Python standard library."""
@@ -9,7 +9,7 @@ def is_stdlib_module(module_name):
         return True
 
     for path in sys.path:
-        if path.startswith(sys.prefix) and not "site-packages" in path:
+        if path.startswith(sys.prefix) and "site-packages" not in path:
             if os.path.exists(os.path.join(path, module_name)) or os.path.exists(os.path.join(path, f"{module_name}.py")):
                 return True
 

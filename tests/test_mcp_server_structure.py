@@ -2,8 +2,6 @@
 Test the modular MCP server structure.
 """
 import importlib
-import inspect
-import pytest
 
 def test_tool_imports():
     """Test that all tools can be imported from their modules."""
@@ -41,7 +39,6 @@ def test_tool_imports():
     )
 
     # Import main MCP server - should import all tools
-    import codescan_mcp_server
 
     # Verify all expected functions are callable
     assert callable(get_connection_status_tool)

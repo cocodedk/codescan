@@ -5,8 +5,8 @@ This module provides a class to collect and display statistics about the code sc
 replacing the verbose print statements with a more organized approach.
 """
 
-from collections import defaultdict, Counter
-from typing import Dict, List, Any, Set, Optional
+from collections import Counter
+from typing import Dict, List, Any, Set
 import time
 
 class StatsCollector:
@@ -231,11 +231,11 @@ class StatsCollector:
         print(f"Time elapsed: {elapsed:.2f} seconds")
         print(f"Files scanned: {summary['files']['total']} ({summary['files']['skipped']} skipped, {summary['files']['error']} errors)")
         print(f"File types: {summary['files']['by_type']}")
-        print(f"Elements found:")
+        print("Elements found:")
         for name, count in summary['elements'].items():
             print(f"  - {name}: {count}")
 
-        print(f"Unique elements:")
+        print("Unique elements:")
         for name, count in summary['unique'].items():
             print(f"  - {name}: {count}")
 

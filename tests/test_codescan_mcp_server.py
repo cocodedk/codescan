@@ -1,4 +1,3 @@
-import os
 import pytest
 from codescan_mcp_server import (
     graph_summary, list_files, list_functions, list_classes, callees, callers,

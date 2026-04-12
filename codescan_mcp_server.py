@@ -3,22 +3,21 @@
 codescan_mcp_server.py - MCP Server using FastMCP and stdio.
 Provides tools to query a Neo4j database populated with code analysis data.
 """
-import sys
 from codescan_lib.mcp_tools.base import (
-    logger, mcp, driver, verify_database_connection, initial_connection_status
+    logger, mcp, driver, initial_connection_status
 )
 
 # Import all tools
-from codescan_lib.mcp_tools.core import *
-from codescan_lib.mcp_tools.file_tools import *
-from codescan_lib.mcp_tools.call_graph import *
-from codescan_lib.mcp_tools.class_tools import *
-from codescan_lib.mcp_tools.constant_tools import *
-from codescan_lib.mcp_tools.test_tools import *
+from codescan_lib.mcp_tools.core import *  # noqa: F403
+from codescan_lib.mcp_tools.file_tools import *  # noqa: F403
+from codescan_lib.mcp_tools.call_graph import *  # noqa: F403
+from codescan_lib.mcp_tools.class_tools import *  # noqa: F403
+from codescan_lib.mcp_tools.constant_tools import *  # noqa: F403
+from codescan_lib.mcp_tools.test_tools import *  # noqa: F403
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    logger.info(f"Starting CodeScan MCP Server (FastMCP, stdio)")
+    logger.info("Starting CodeScan MCP Server (FastMCP, stdio)")
     logger.info(f"Database connection status: {'Success' if initial_connection_status['success'] else 'Failed'}")
     if not initial_connection_status['success']:
         logger.warning(f"Connection details: URI={initial_connection_status['uri']}, USER={initial_connection_status['user']}, PORT={initial_connection_status['port']}")

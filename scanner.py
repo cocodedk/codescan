@@ -12,12 +12,11 @@ from neo4j import GraphDatabase
 
 from codescan_lib import (
     # Constants
-    NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_HOST,
-    TEST_DIR_PATTERNS, TEST_FILE_PATTERNS, TEST_FUNCTION_PREFIXES, TEST_CLASS_PATTERNS,
+    NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, TEST_DIR_PATTERNS, TEST_FILE_PATTERNS, TEST_FUNCTION_PREFIXES, TEST_CLASS_PATTERNS,
     IGNORE_DIRS,
 
     # Database operations
-    clear_database, get_db_session, close_db_connection, print_db_info,
+    clear_database, print_db_info,
 
     # Analysis functions
     analyze_directory
