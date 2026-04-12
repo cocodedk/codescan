@@ -1,5 +1,9 @@
 # CodeScan: Python Static Code Analyzer with Neo4j Integration
 
+## Website
+- [English](https://cocodedk.github.io/codesacan/)
+- [فارسی (Persian)](https://cocodedk.github.io/codesacan/fa/)
+
 ## Overview
 
 `scanner.py` is a static code analysis tool designed to parse Python source code, extract structural and call-graph information, and store it in a Neo4j graph database. The tool is highly configurable via environment variables and is intended for advanced codebase exploration, dependency analysis, and visualization using Neo4j Browser with GraSS styling.
@@ -224,5 +228,17 @@ After configuring, restart Cursor and open the MCP tools panel. You should see C
 - `codescan_mcp_server.py` — MCP server implementation
 - `run_mcp_stdio_server.sh` — Shell script to launch the server
 
+## Docker
+
+```bash
+docker pull ghcr.io/cocodedk/codesacan:latest
+docker run ghcr.io/cocodedk/codesacan:latest
+```
+
+## Author
+
+**Babak Bandpey** — [cocode.dk](https://cocode.dk) | [LinkedIn](https://linkedin.com/in/babakbandpey) | [GitHub](https://github.com/cocodedk)
+
 ## License
-MIT or your project license here.
+
+Apache-2.0 | © 2026 [Cocode](https://cocode.dk) | Created by [Babak Bandpey](https://linkedin.com/in/babakbandpey)

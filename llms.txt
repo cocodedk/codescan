@@ -1,4 +1,9 @@
-# CodeScan - LLM Reference
+# CodeScan — LLM Reference
+
+> Repository: https://github.com/cocodedk/codesacan
+> Website: https://cocodedk.github.io/codesacan/
+> Author: Babak Bandpey (https://cocode.dk)
+> License: Apache-2.0
 
 ## Project Overview
 Static Python code analyzer with Neo4j integration for code relationship mapping. Parses Python AST and stores classes, functions, call graphs in Neo4j graph database.
