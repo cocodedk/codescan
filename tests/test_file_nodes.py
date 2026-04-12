@@ -4,7 +4,6 @@ import shutil
 import pytest
 from neo4j import GraphDatabase
 
-from codescan_lib.analyzer import CodeAnalyzer
 from codescan_lib.db_operations import clear_database
 from codescan_lib.analysis import analyze_file, analyze_directory
 from codescan_lib.constants import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD

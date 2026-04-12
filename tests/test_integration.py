@@ -137,10 +137,14 @@ def describe_password_validator():
         """Restore the original scanner configuration."""
         # Only restore if we've saved the original configuration
         if hasattr(self, 'orig_dir_patterns'):
-            TEST_DIR_PATTERNS = self.orig_dir_patterns
-            TEST_FILE_PATTERNS = self.orig_file_patterns
-            TEST_FUNCTION_PREFIXES = self.orig_function_prefixes
-            TEST_CLASS_PATTERNS = self.orig_class_patterns
+            TEST_DIR_PATTERNS.clear()
+            TEST_DIR_PATTERNS.extend(self.orig_dir_patterns)
+            TEST_FILE_PATTERNS.clear()
+            TEST_FILE_PATTERNS.extend(self.orig_file_patterns)
+            TEST_FUNCTION_PREFIXES.clear()
+            TEST_FUNCTION_PREFIXES.extend(self.orig_function_prefixes)
+            TEST_CLASS_PATTERNS.clear()
+            TEST_CLASS_PATTERNS.extend(self.orig_class_patterns)
 
     def test_standard_project_structure(self, neo4j_test_session):
         """Test detection of test components in a standard project structure."""

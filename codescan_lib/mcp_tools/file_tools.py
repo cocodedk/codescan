@@ -5,7 +5,7 @@ This module contains tools for working with files and their contents.
 """
 from typing import Dict, Any, List
 
-from .base import mcp, q, driver, get_db_session
+from .base import mcp, q, driver
 
 @mcp.tool()
 def list_files(random_string: str):

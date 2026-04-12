@@ -1,6 +1,4 @@
 import os
-from typing import Optional
-from tqdm import tqdm
 from neo4j import GraphDatabase
 from .constants import NEO4J_HOST, NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
 

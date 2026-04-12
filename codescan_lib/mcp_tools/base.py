@@ -6,7 +6,7 @@ This module contains common functionality used by all MCP tools.
 import os
 import logging
 import sys
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from contextlib import contextmanager
 
 from dotenv import load_dotenv

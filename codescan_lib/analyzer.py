@@ -357,7 +357,7 @@ class CodeAnalyzer(ast.NodeVisitor):
             container_name: Name of the container (if applicable)
         """
         # Create the constant node
-        constant_node = self.session.run(
+        self.session.run(
             """
             MERGE (c:Constant {
                 name: $name,
