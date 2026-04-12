@@ -9,6 +9,24 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+
+    services:
+      neo4j:
+        image: neo4j:5.26.0
+        ports:
+          - 7600:7687
+        env:
+          NEO4J_AUTH: neo4j/strongpassword
+          NEO4J_server_memory_heap_initial__size: 512m
+          NEO4J_server_memory_heap_max__size: 1G
+          NEO4J_server_memory_pagecache_size: 512m
+        options: >-
+          --health-cmd "wget -O /dev/null http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -26,4 +44,8 @@ jobs:
           ruff check .
 
       - name: Test
+        env:
+          NEO4J_URI: bolt://localhost:7600
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: strongpassword
         run: pytest
