@@ -60,8 +60,7 @@ else:
 
 # --- Initialize FastMCP ---
 mcp = FastMCP("codescan_neo4j",
-              description="Neo4j code graph analyzer for Python codebases",
-              version="1.0.0")
+              instructions="Neo4j code graph analyzer for Python codebases")
 
 # --- Neo4j Connection ---
 driver = None
