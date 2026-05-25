@@ -1,6 +1,6 @@
 neo4j>=5.28.0
 python-dotenv>=1.2.2
-mcp[cli]>=0.17.0
+mcp[cli]>=1.27.1
 pytest>=7.0.0
 pytest-cov>=7.1.0
 pytest-pythonpath>=0.7.3
