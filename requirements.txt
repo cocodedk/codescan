@@ -4,4 +4,4 @@ mcp[cli]>=1.27.1
 pytest>=7.0.0
 pytest-cov>=7.1.0
 pytest-pythonpath>=0.7.3
-tqdm>=4.67.3
+tqdm>=4.68.2
