@@ -1,7 +1,7 @@
 # CodeScan — LLM Reference
 
 > Repository: https://github.com/cocodedk/codesacan
-> Website: https://cocodedk.github.io/codesacan/
+> Website: https://codescan.cocode.dk/
 > Author: Babak Bandpey (https://cocode.dk)
 > License: Apache-2.0
 
