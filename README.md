@@ -1,8 +1,8 @@
 # CodeScan: Python Static Code Analyzer with Neo4j Integration
 
 ## Website
-- [English](https://cocodedk.github.io/codesacan/)
-- [فارسی (Persian)](https://cocodedk.github.io/codesacan/fa/)
+- [English](https://codescan.cocode.dk/)
+- [فارسی (Persian)](https://codescan.cocode.dk/fa/)
 
 ## Overview
 
