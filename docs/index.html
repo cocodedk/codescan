@@ -82,7 +82,10 @@
             margin: 0 auto;
             padding: 40px 20px;
         }
-        
+
+        /* The cocode.dk frame lines up with this column; keep the gutters in step. */
+        cocode-head, cocode-foot { --cocode-max: 900px; --cocode-gutter: 20px; }
+
         header {
             text-align: center;
             padding: 60px 0;
@@ -390,8 +393,19 @@
             .brand-links { flex-direction: column; gap: 15px; }
         }
     </style>
+    <link rel="stylesheet" href="https://brand.cocode.dk/v1.css">
+    <script type="module" src="https://brand.cocode.dk/v1.js"></script>
 </head>
 <body>
+
+<!-- The cocode.dk family frame. Without JavaScript its children show instead: a way home
+     and the language link. -->
+<cocode-head project="CodeScan" accent="#58a6ff" on-accent="#0d1117" dark>
+  <a href="https://cocode.dk">cocode.dk</a>
+  <span class="on">EN</span>
+  <a href="fa/" hreflang="fa">FA</a>
+</cocode-head>
+
     <div class="container">
         <header>
             <div class="logo">CodeScan</div>
@@ -406,8 +420,7 @@
             <div class="author">
                 Created by <a href="https://linkedin.com/in/babakbandpey" target="_blank" rel="noreferrer">Babak Bandpey</a> &nbsp;|&nbsp;
                 Built by <a href="https://cocode.dk" target="_blank" rel="noreferrer">Cocode</a> &nbsp;|&nbsp;
-                <a href="https://github.com/cocodedk/codesacan" target="_blank" rel="noreferrer">GitHub</a> &nbsp;|&nbsp;
-                <a href="fa/" class="lang-switch">فارسی</a>
+                <a href="https://github.com/cocodedk/codesacan" target="_blank" rel="noreferrer">GitHub</a>
             </div>
         </header>
 
@@ -519,8 +532,12 @@
         </section>
 
         <footer>
-            <p>Apache-2.0 &nbsp;|&nbsp; &copy; 2026 <a href="https://cocode.dk" target="_blank" rel="noreferrer">Cocode</a> &nbsp;|&nbsp; Created by <a href="https://linkedin.com/in/babakbandpey" target="_blank" rel="noreferrer">Babak Bandpey</a></p>
+            <p>Apache-2.0</p>
         </footer>
     </div>
+
+<cocode-foot repo="cocodedk/codescan" dark>
+  <a href="https://cocode.dk">cocode.dk</a>
+</cocode-foot>
 </body>
 </html>
