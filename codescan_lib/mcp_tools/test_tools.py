@@ -3,12 +3,13 @@ Test-related MCP tools.
 
 This module contains tools for working with tests and test coverage.
 """
-from typing import Dict, Any, List
+from typing import Any
 
 from .base import mcp, q
 
+
 @mcp.tool()
-def list_test_functions() -> List[Dict[str, Any]]:
+def list_test_functions() -> list[dict[str, Any]]:
     """
     List all test functions.
 
@@ -22,7 +23,7 @@ def list_test_functions() -> List[Dict[str, Any]]:
     """)
 
 @mcp.tool()
-def list_example_functions() -> List[Dict[str, Any]]:
+def list_example_functions() -> list[dict[str, Any]]:
     """
     List all example functions.
 
@@ -36,7 +37,7 @@ def list_example_functions() -> List[Dict[str, Any]]:
     """)
 
 @mcp.tool()
-def list_test_classes() -> List[Dict[str, Any]]:
+def list_test_classes() -> list[dict[str, Any]]:
     """
     List all test classes.
 
@@ -50,7 +51,7 @@ def list_test_classes() -> List[Dict[str, Any]]:
     """)
 
 @mcp.tool()
-def list_example_classes() -> List[Dict[str, Any]]:
+def list_example_classes() -> list[dict[str, Any]]:
     """
     List all example classes.
 
@@ -64,7 +65,7 @@ def list_example_classes() -> List[Dict[str, Any]]:
     """)
 
 @mcp.tool()
-def get_test_files() -> List[Dict[str, str]]:
+def get_test_files() -> list[dict[str, str]]:
     """
     List all files containing tests.
 
@@ -78,7 +79,7 @@ def get_test_files() -> List[Dict[str, str]]:
     """)
 
 @mcp.tool()
-def get_example_files() -> List[Dict[str, str]]:
+def get_example_files() -> list[dict[str, str]]:
     """
     List all files containing examples.
 
@@ -92,7 +93,7 @@ def get_example_files() -> List[Dict[str, str]]:
     """)
 
 @mcp.tool()
-def get_test_detection_config() -> Dict[str, List[str]]:
+def get_test_detection_config() -> dict[str, list[str]]:
     """
     Get the current test detection configuration.
 
@@ -101,10 +102,10 @@ def get_test_detection_config() -> Dict[str, List[str]]:
     """
     # Import the config from codescan_lib
     from codescan_lib.constants import (
+        TEST_CLASS_PATTERNS,
         TEST_DIR_PATTERNS,
         TEST_FILE_PATTERNS,
         TEST_FUNCTION_PREFIXES,
-        TEST_CLASS_PATTERNS
     )
 
     return {
@@ -115,7 +116,7 @@ def get_test_detection_config() -> Dict[str, List[str]]:
     }
 
 @mcp.tool()
-def untested_functions(exclude_private: bool = True) -> List[Dict[str, Any]]:
+def untested_functions(exclude_private: bool = True) -> list[dict[str, Any]]:
     """
     List functions without tests.
 
@@ -138,7 +139,7 @@ def untested_functions(exclude_private: bool = True) -> List[Dict[str, Any]]:
     """)
 
 @mcp.tool()
-def get_test_coverage_ratio() -> List[Dict[str, Any]]:
+def get_test_coverage_ratio() -> list[dict[str, Any]]:
     """
     Get test coverage ratio.
 
@@ -161,7 +162,7 @@ def get_test_coverage_ratio() -> List[Dict[str, Any]]:
     """)
 
 @mcp.tool()
-def functions_tested_by(file: str) -> List[Dict[str, Any]]:
+def functions_tested_by(file: str) -> list[dict[str, Any]]:
     """
     List functions tested by a specific test file.
 
@@ -178,7 +179,7 @@ def functions_tested_by(file: str) -> List[Dict[str, Any]]:
     """, file=file)
 
 @mcp.tool()
-def get_tests_for_function(name: str, file: str = None) -> List[Dict[str, Any]]:
+def get_tests_for_function(name: str, file: str | None = None) -> list[dict[str, Any]]:
     """
     List tests for a specific function.
 
@@ -206,7 +207,7 @@ def get_tests_for_function(name: str, file: str = None) -> List[Dict[str, Any]]:
     return q(query, **params)
 
 @mcp.tool()
-def untested_classes(exclude_private: bool = True) -> List[Dict[str, Any]]:
+def untested_classes(exclude_private: bool = True) -> list[dict[str, Any]]:
     """
     List classes without tests.
 

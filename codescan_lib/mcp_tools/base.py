@@ -3,15 +3,15 @@ Base module for MCP tools.
 
 This module contains common functionality used by all MCP tools.
 """
-import os
 import logging
+import os
 import sys
-from typing import List, Dict, Any
 from contextlib import contextmanager
+from typing import Any
 
 from dotenv import load_dotenv
-from neo4j import GraphDatabase, basic_auth
 from mcp.server.fastmcp import FastMCP
+from neo4j import GraphDatabase, basic_auth
 
 # --- Configuration & Setup ---
 load_dotenv(".env", override=True)
@@ -65,7 +65,7 @@ mcp = FastMCP("codescan_neo4j",
 # --- Neo4j Connection ---
 driver = None
 
-def verify_database_connection() -> Dict[str, Any]:
+def verify_database_connection() -> dict[str, Any]:
     """Verify connection to Neo4j database and return status."""
     connection_info = {
         "success": False,
@@ -93,8 +93,8 @@ def verify_database_connection() -> Dict[str, Any]:
                 connection_info["error"] = "Connected but query returned unexpected result"
                 logger.error(connection_info["error"])
 
-    except Exception as e:
-        error_msg = f"Failed to connect to Neo4j: {str(e)}"
+    except Exception as e:  # noqa: BLE001 -- must survive any driver/network failure to report status
+        error_msg = f"Failed to connect to Neo4j: {e!s}"
         connection_info["error"] = error_msg
         logger.error(error_msg)
 
@@ -112,11 +112,11 @@ if initial_connection_status["success"]:
             NEO4J_URI,
             auth=basic_auth(NEO4J_USER, NEO4J_PASSWORD)
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- startup must not crash on any driver init failure
         logger.error(f"Failed to create Neo4j driver: {e}")
 
 # --- Query Helper ---
-def q(cypher: str, **params) -> List[Dict[str, Any]]:
+def q(cypher: str, **params) -> list[dict[str, Any]]:
     """Run a Cypher query and return list of dicts."""
     if MCP_SERVER_LOGGING_ENABLED and DEBUG_MCP:
         logger.debug(f"Executing Cypher Query: {cypher}")
@@ -132,7 +132,7 @@ def q(cypher: str, **params) -> List[Dict[str, Any]]:
             if MCP_SERVER_LOGGING_ENABLED and DEBUG_MCP:
                 logger.debug(f"Query returned {len(results)} rows.")
             return results
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- any Cypher/driver error must be logged, not crash the tool
         logger.error(f"Neo4j query error: {e}")
         return []
 

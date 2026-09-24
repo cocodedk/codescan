@@ -8,15 +8,16 @@ Tests for the new CodeScan MCP tools:
 import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import the tools we're testing
-from codescan_lib.mcp_tools.test_tools import untested_classes
-from codescan_lib.mcp_tools.call_graph import transitive_calls, find_function_relations
+from codescan_lib.mcp_tools.call_graph import find_function_relations, transitive_calls
 from codescan_lib.mcp_tools.class_tools import find_class_relations
+from codescan_lib.mcp_tools.test_tools import untested_classes
+
 
 class TestNewTools(unittest.TestCase):
     """Test the new tools added to the MCP server."""

@@ -4,7 +4,8 @@ Constant-related MCP tools.
 This module contains tools for working with constants.
 """
 
-from .base import mcp, get_db_session
+from .base import get_db_session, mcp
+
 
 @mcp.tool()
 def repetitive_constants(limit: int = 10) -> list:

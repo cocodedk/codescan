@@ -102,7 +102,7 @@ python scanner.py --project-dir /path/to/your/project
 ### 6. Usage
 
 #### Prerequisites
-- Python 3.8+
+- Python 3.10+ (`mcp` and `neo4j` both require it; CI runs 3.12)
 - Neo4j 5.x (Docker recommended)
 - Install dependencies:
   ```bash
@@ -230,9 +230,18 @@ After configuring, restart Cursor and open the MCP tools panel. You should see C
 
 ## Docker
 
+The server speaks MCP over stdio, so `-i` is required to keep stdin open for
+a client to send requests through, and it needs the Neo4j connection details
+since none of that runs inside the image:
+
 ```bash
-docker pull ghcr.io/cocodedk/codesacan:latest
-docker run ghcr.io/cocodedk/codesacan:latest
+docker pull ghcr.io/cocodedk/codescan:latest
+docker run -i \
+  -e NEO4J_HOST=host.docker.internal \
+  -e NEO4J_PORT_BOLT=7600 \
+  -e NEO4J_USER=neo4j \
+  -e NEO4J_PASSWORD=strongpassword \
+  ghcr.io/cocodedk/codescan:latest
 ```
 
 ## Author

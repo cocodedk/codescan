@@ -1,9 +1,9 @@
+import ast
 import os
+import shutil
 import sys
 import tempfile
-import shutil
 import unittest
-import ast
 from unittest.mock import MagicMock
 
 # Add parent directory to path to import scanner module
@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # Import the module we'll be testing
 from codescan_lib.analyzer import CodeAnalyzer
 from codescan_lib.utils import is_example_file
+
 
 class TestExampleLabeling(unittest.TestCase):
     """Test the example component labeling functionality."""

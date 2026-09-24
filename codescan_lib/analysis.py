@@ -1,20 +1,21 @@
-import os
 import ast
-from typing import Optional, Dict, Any, List
+import os
+from typing import Any
+
 from tqdm import tqdm
 
-from .constants import IGNORE_DIRS
-from .utils import is_test_file, is_example_file, is_project_file, get_relative_path
 from .analyzer import CodeAnalyzer
+from .constants import IGNORE_DIRS
 from .stats_collector import StatsCollector
+from .utils import get_relative_path, is_example_file, is_project_file, is_test_file
 
 
 def analyze_file(
     file_path: str,
     session,
     base_dir: str,
-    stats_collector: Optional[StatsCollector] = None,
-    custom_patterns: Optional[Dict[str, Any]] = None,
+    stats_collector: StatsCollector | None = None,
+    custom_patterns: dict[str, Any] | None = None,
     skip_dunder_methods: bool = True,
 ) -> None:
     """
@@ -135,8 +136,8 @@ def analyze_file(
 def analyze_directory(
     directory: str,
     session,
-    ignore_dirs: Optional[List[str]] = None,
-    custom_patterns: Optional[Dict[str, Any]] = None,
+    ignore_dirs: list[str] | None = None,
+    custom_patterns: dict[str, Any] | None = None,
     verbose: bool = False,
     skip_dunder_methods: bool = True,
 ) -> StatsCollector:

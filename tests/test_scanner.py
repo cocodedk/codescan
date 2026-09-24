@@ -1,9 +1,12 @@
 import os
-import tempfile
 import shutil
+import tempfile
+
 import pytest
 from neo4j import GraphDatabase
-from codescan_lib import clear_database, analyze_file, analyze_directory
+
+from codescan_lib import analyze_directory, analyze_file, clear_database
+
 
 @pytest.fixture(scope="module")
 def neo4j_test_session():

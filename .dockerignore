@@ -1,0 +1,13 @@
+.git
+.github
+venv/
+drp_venv/
+.venv/
+.env
+__pycache__/
+*.pyc
+data/
+logs/
+tests/
+docs/
+.cursor

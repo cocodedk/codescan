@@ -1,6 +1,9 @@
 import os
+
 from neo4j import GraphDatabase
-from .constants import NEO4J_HOST, NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
+
+from .constants import NEO4J_HOST, NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
+
 
 def clear_database(session, quiet: bool = False):
     """

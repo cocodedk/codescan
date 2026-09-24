@@ -8,8 +8,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 # Import MCP tools to test
 from codescan_lib.mcp_tools.test_tools import (
-    list_test_functions, list_test_classes, get_test_files
+    get_test_files,
+    list_test_classes,
+    list_test_functions,
 )
+
 
 class TestTestMCPTools(unittest.TestCase):
     """Test the MCP tools for test components."""

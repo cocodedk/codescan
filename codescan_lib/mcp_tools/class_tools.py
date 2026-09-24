@@ -3,12 +3,13 @@ Class-related MCP tools.
 
 This module contains tools for working with classes.
 """
-from typing import Dict, Any, List
+from typing import Any
 
 from .base import mcp, q
 
+
 @mcp.tool()
-def classes_with_no_methods() -> List[Dict[str, Any]]:
+def classes_with_no_methods() -> list[dict[str, Any]]:
     """
     List classes that do not contain any methods.
     Returns:
@@ -24,7 +25,7 @@ def classes_with_no_methods() -> List[Dict[str, Any]]:
     )
 
 @mcp.tool()
-def classes_with_most_methods(limit: int = 10) -> List[Dict[str, Any]]:
+def classes_with_most_methods(limit: int = 10) -> list[dict[str, Any]]:
     """
     List classes with the most methods.
     Args:
@@ -45,7 +46,7 @@ def classes_with_most_methods(limit: int = 10) -> List[Dict[str, Any]]:
     )
 
 @mcp.tool()
-def find_class_relations(class_name: str, partial_match: bool = False, limit: int = 50) -> Dict[str, Any]:
+def find_class_relations(class_name: str, partial_match: bool = False, limit: int = 50) -> dict[str, Any]:
     """
     Find class relations by class name, with option to search by partial name.
 

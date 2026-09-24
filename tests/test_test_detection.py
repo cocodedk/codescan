@@ -1,14 +1,15 @@
 import os
+import shutil
 import sys
 import tempfile
-import shutil
 import unittest
 
 # Add parent directory to path to import scanner module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from codescan_lib.utils import is_test_file
 from codescan_lib.constants import TEST_DIR_PATTERNS, TEST_FILE_PATTERNS
+from codescan_lib.utils import is_test_file
+
 
 class TestTestDetection(unittest.TestCase):
     """Test the test file detection functionality."""
