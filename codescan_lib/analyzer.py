@@ -1,8 +1,9 @@
 import ast
-from typing import Any, Optional
+from typing import Any
+
 from .constants import BUILTIN_FUNCTIONS, TEST_FUNCTION_PREFIXES
-from .utils import is_stdlib_module, is_example_file
 from .stats_collector import StatsCollector
+from .utils import is_example_file, is_stdlib_module
 
 
 class CodeAnalyzer(ast.NodeVisitor):
@@ -11,13 +12,13 @@ class CodeAnalyzer(ast.NodeVisitor):
         file_path: str,
         session: Any,
         is_test_file: bool = False,
-        stats_collector: Optional[StatsCollector] = None,
+        stats_collector: StatsCollector | None = None,
         skip_dunder_methods: bool = True,
     ):
         self.file_path: str = file_path
         self.session: Any = session
-        self.current_class: Optional[str] = None
-        self.current_function: Optional[str] = None
+        self.current_class: str | None = None
+        self.current_function: str | None = None
         self.is_test_file: bool = is_test_file
         self.is_example_file: bool = is_example_file(file_path)
         self.current_scope: str = "module"

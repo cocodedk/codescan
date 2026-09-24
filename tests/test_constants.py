@@ -1,12 +1,14 @@
 import os
-import tempfile
 import shutil
+import tempfile
+
 import pytest
 from neo4j import GraphDatabase
 
+from codescan_lib.analysis import analyze_directory, analyze_file
+from codescan_lib.constants import NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
 from codescan_lib.db_operations import clear_database
-from codescan_lib.analysis import analyze_file, analyze_directory
-from codescan_lib.constants import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
+
 
 @pytest.fixture
 def neo4j_test_session():

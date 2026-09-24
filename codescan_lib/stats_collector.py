@@ -5,9 +5,10 @@ This module provides a class to collect and display statistics about the code sc
 replacing the verbose print statements with a more organized approach.
 """
 
-from collections import Counter
-from typing import Dict, List, Any, Set
 import time
+from collections import Counter
+from typing import Any
+
 
 class StatsCollector:
     """
@@ -49,12 +50,12 @@ class StatsCollector:
         })
 
         # Sets to track unique elements
-        self.unique_files: Set[str] = set()
-        self.unique_classes: Set[str] = set()
-        self.unique_functions: Set[str] = set()
+        self.unique_files: set[str] = set()
+        self.unique_classes: set[str] = set()
+        self.unique_functions: set[str] = set()
 
         # Error tracking
-        self.errors: List[Dict[str, Any]] = []
+        self.errors: list[dict[str, Any]] = []
 
     def register_file(self, file_path: str, file_type: str) -> None:
         """
@@ -194,7 +195,7 @@ class StatsCollector:
         if self.verbose and is_test:
             print(f"Found import in test file: {name} in {file_path}")
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """
         Get a summary of the collected statistics.
 

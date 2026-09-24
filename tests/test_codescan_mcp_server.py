@@ -1,11 +1,26 @@
 import pytest
+
 from codescan_mcp_server import (
-    graph_summary, list_files, list_functions, list_classes, callees, callers,
-    unresolved_references, uncalled_functions, most_called_functions, most_calling_functions,
-    recursive_functions, classes_with_no_methods, functions_calling_references,
-    classes_with_most_methods, function_call_arguments, rescan_codebase, file_contents,
-    repetitive_constant_names
+    callees,
+    callers,
+    classes_with_most_methods,
+    classes_with_no_methods,
+    file_contents,
+    function_call_arguments,
+    functions_calling_references,
+    graph_summary,
+    list_classes,
+    list_files,
+    list_functions,
+    most_called_functions,
+    most_calling_functions,
+    recursive_functions,
+    repetitive_constant_names,
+    rescan_codebase,
+    uncalled_functions,
+    unresolved_references,
 )
+
 
 def test_graph_summary():
     result = graph_summary()

@@ -3,12 +3,13 @@ Call graph analysis MCP tools.
 
 This module contains tools for analyzing the call graph.
 """
-from typing import Dict, Any, List
+from typing import Any
 
 from .base import mcp, q
 
+
 @mcp.tool()
-def callees(fn: str) -> List[Dict[str, Any]]:
+def callees(fn: str) -> list[dict[str, Any]]:
     """
     Find functions called by a specific function.
 
@@ -24,7 +25,7 @@ def callees(fn: str) -> List[Dict[str, Any]]:
     """, fn=fn)
 
 @mcp.tool()
-def callers(fn: str) -> List[Dict[str, Any]]:
+def callers(fn: str) -> list[dict[str, Any]]:
     """
     Find functions that call a specific function.
 
@@ -40,7 +41,7 @@ def callers(fn: str) -> List[Dict[str, Any]]:
     """, fn=fn)
 
 @mcp.tool()
-def unresolved_references() -> List[Dict[str, Any]]:
+def unresolved_references() -> list[dict[str, Any]]:
     """
     List unresolved function references in the codebase.
 
@@ -53,7 +54,7 @@ def unresolved_references() -> List[Dict[str, Any]]:
     """)
 
 @mcp.tool()
-def uncalled_functions() -> List[Dict[str, Any]]:
+def uncalled_functions() -> list[dict[str, Any]]:
     """
     List all user-defined functions that are not called by any other function.
 
@@ -71,7 +72,7 @@ def uncalled_functions() -> List[Dict[str, Any]]:
     )
 
 @mcp.tool()
-def most_called_functions(limit: int = 10) -> List[Dict[str, Any]]:
+def most_called_functions(limit: int = 10) -> list[dict[str, Any]]:
     """
     List functions with the most callers (fan-in).
     Args:
@@ -93,7 +94,7 @@ def most_called_functions(limit: int = 10) -> List[Dict[str, Any]]:
     )
 
 @mcp.tool()
-def most_calling_functions(limit: int = 10) -> List[Dict[str, Any]]:
+def most_calling_functions(limit: int = 10) -> list[dict[str, Any]]:
     """
     List functions that call the most other functions (fan-out).
     Args:
@@ -115,7 +116,7 @@ def most_calling_functions(limit: int = 10) -> List[Dict[str, Any]]:
     )
 
 @mcp.tool()
-def recursive_functions() -> List[Dict[str, Any]]:
+def recursive_functions() -> list[dict[str, Any]]:
     """
     List functions that call themselves (direct recursion).
     Returns:
@@ -131,7 +132,7 @@ def recursive_functions() -> List[Dict[str, Any]]:
     )
 
 @mcp.tool()
-def functions_calling_references() -> List[Dict[str, Any]]:
+def functions_calling_references() -> list[dict[str, Any]]:
     """
     List functions that call at least one reference function (potential missing dependencies).
     Returns:
@@ -148,7 +149,7 @@ def functions_calling_references() -> List[Dict[str, Any]]:
     )
 
 @mcp.tool()
-def function_call_arguments(fn: str, file: str = None) -> List[Dict[str, Any]]:
+def function_call_arguments(fn: str, file: str | None = None) -> list[dict[str, Any]]:
     """
     List all argument lists used in calls to a given function.
     Args:
@@ -172,7 +173,7 @@ def function_call_arguments(fn: str, file: str = None) -> List[Dict[str, Any]]:
     return q(cypher, **params)
 
 @mcp.tool()
-def transitive_calls(source_fn: str, target_fn: str, max_depth: int = 10) -> List[Dict[str, Any]]:
+def transitive_calls(source_fn: str, target_fn: str, max_depth: int = 10) -> list[dict[str, Any]]:
     """
     Find full relationship chains between two functions (if one call will eventually lead to the other).
 
@@ -184,8 +185,10 @@ def transitive_calls(source_fn: str, target_fn: str, max_depth: int = 10) -> Lis
     Returns:
         List of paths showing how source_fn eventually calls target_fn
     """
-    return q("""
-        MATCH path = (source:Function {name: $source_fn})-[:CALLS*1..%d]->(target:Function {name: $target_fn})
+    # Cypher's variable-length relationship bound (*1..N) must be a literal in
+    # the query text -- Neo4j does not allow binding it as a query parameter.
+    return q(f"""
+        MATCH path = (source:Function {{name: $source_fn}})-[:CALLS*1..{max_depth}]->(target:Function {{name: $target_fn}})
         WHERE length(path) <= $max_depth
         WITH path, [node IN nodes(path) | node.name] AS function_names
         RETURN
@@ -194,10 +197,10 @@ def transitive_calls(source_fn: str, target_fn: str, max_depth: int = 10) -> Lis
             [node IN nodes(path) | node.file] AS function_files
         ORDER BY path_length
         LIMIT 10
-    """ % max_depth, source_fn=source_fn, target_fn=target_fn, max_depth=max_depth)
+    """, source_fn=source_fn, target_fn=target_fn, max_depth=max_depth)
 
 @mcp.tool()
-def find_function_relations(function_name: str, partial_match: bool = False, limit: int = 50) -> Dict[str, Any]:
+def find_function_relations(function_name: str, partial_match: bool = False, limit: int = 50) -> dict[str, Any]:
     """
     Find function relations by function name, with option to search by partial name.
 

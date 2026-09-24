@@ -3,9 +3,10 @@ File-related MCP tools.
 
 This module contains tools for working with files and their contents.
 """
-from typing import Dict, Any, List
+from typing import Any
 
-from .base import mcp, q, driver
+from .base import driver, mcp, q
+
 
 @mcp.tool()
 def list_files(random_string: str):
@@ -55,7 +56,7 @@ def file_contents(file: str):
         }
 
 @mcp.tool()
-def list_functions(file: str) -> List[Dict[str, Any]]:
+def list_functions(file: str) -> list[dict[str, Any]]:
     """
     List all functions defined in a specific file.
 
@@ -73,7 +74,7 @@ def list_functions(file: str) -> List[Dict[str, Any]]:
     """, file=file)
 
 @mcp.tool()
-def list_classes(file: str) -> List[Dict[str, Any]]:
+def list_classes(file: str) -> list[dict[str, Any]]:
     """
     List all classes defined in a specific file.
 

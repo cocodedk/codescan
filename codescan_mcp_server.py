@@ -3,17 +3,15 @@
 codescan_mcp_server.py - MCP Server using FastMCP and stdio.
 Provides tools to query a Neo4j database populated with code analysis data.
 """
-from codescan_lib.mcp_tools.base import (
-    logger, mcp, driver, initial_connection_status
-)
+from codescan_lib.mcp_tools.base import driver, initial_connection_status, logger, mcp
+from codescan_lib.mcp_tools.call_graph import *
+from codescan_lib.mcp_tools.class_tools import *
+from codescan_lib.mcp_tools.constant_tools import *
 
 # Import all tools
-from codescan_lib.mcp_tools.core import *  # noqa: F403
-from codescan_lib.mcp_tools.file_tools import *  # noqa: F403
-from codescan_lib.mcp_tools.call_graph import *  # noqa: F403
-from codescan_lib.mcp_tools.class_tools import *  # noqa: F403
-from codescan_lib.mcp_tools.constant_tools import *  # noqa: F403
-from codescan_lib.mcp_tools.test_tools import *  # noqa: F403
+from codescan_lib.mcp_tools.core import *
+from codescan_lib.mcp_tools.file_tools import *
+from codescan_lib.mcp_tools.test_tools import *
 
 # --- Main Execution ---
 if __name__ == "__main__":
@@ -25,7 +23,7 @@ if __name__ == "__main__":
 
     try:
         mcp.run(transport='stdio')
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- top-level guard: log and close the driver instead of a bare crash
         logger.error(f"Server crashed: {e}", exc_info=True)
     finally:
         if driver:

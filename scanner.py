@@ -6,21 +6,28 @@ This script scans Python files in a specified directory, analyzes the code struc
 and creates a graph database representation in Neo4j.
 """
 
-import os
 import argparse
+import os
+
 from neo4j import GraphDatabase
 
 from codescan_lib import (
-    # Constants
-    NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, TEST_DIR_PATTERNS, TEST_FILE_PATTERNS, TEST_FUNCTION_PREFIXES, TEST_CLASS_PATTERNS,
     IGNORE_DIRS,
-
-    # Database operations
-    clear_database, print_db_info,
-
+    NEO4J_PASSWORD,
+    # Constants
+    NEO4J_URI,
+    NEO4J_USER,
+    TEST_CLASS_PATTERNS,
+    TEST_DIR_PATTERNS,
+    TEST_FILE_PATTERNS,
+    TEST_FUNCTION_PREFIXES,
     # Analysis functions
-    analyze_directory
+    analyze_directory,
+    # Database operations
+    clear_database,
+    print_db_info,
 )
+
 
 def main():
     """Main function to parse arguments and run the scanner."""

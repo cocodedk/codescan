@@ -3,39 +3,63 @@ Test the modular MCP server structure.
 """
 import importlib
 
+
 def test_tool_imports():
     """Test that all tools can be imported from their modules."""
     # Core tools
-    from codescan_lib.mcp_tools.core import get_connection_status_tool, graph_summary, rescan_codebase
-
-    # File tools
-    from codescan_lib.mcp_tools.file_tools import (
-        list_files, file_contents, list_functions, list_classes
-    )
-
     # Call graph tools
     from codescan_lib.mcp_tools.call_graph import (
-        callees, callers, unresolved_references, uncalled_functions,
-        most_called_functions, most_calling_functions, recursive_functions,
-        functions_calling_references, function_call_arguments, transitive_calls
+        callees,
+        callers,
+        function_call_arguments,
+        functions_calling_references,
+        most_called_functions,
+        most_calling_functions,
+        recursive_functions,
+        transitive_calls,
+        uncalled_functions,
+        unresolved_references,
     )
 
     # Class tools
     from codescan_lib.mcp_tools.class_tools import (
-        classes_with_no_methods, classes_with_most_methods
+        classes_with_most_methods,
+        classes_with_no_methods,
     )
 
     # Constant tools
     from codescan_lib.mcp_tools.constant_tools import (
-        repetitive_constants, repetitive_constant_names
+        repetitive_constant_names,
+        repetitive_constants,
+    )
+    from codescan_lib.mcp_tools.core import (
+        get_connection_status_tool,
+        graph_summary,
+        rescan_codebase,
+    )
+
+    # File tools
+    from codescan_lib.mcp_tools.file_tools import (
+        file_contents,
+        list_classes,
+        list_files,
+        list_functions,
     )
 
     # Test tools
     from codescan_lib.mcp_tools.test_tools import (
-        list_test_functions, list_example_functions, list_test_classes,
-        list_example_classes, get_test_files, get_example_files,
-        get_test_detection_config, untested_functions, get_test_coverage_ratio,
-        functions_tested_by, get_tests_for_function, untested_classes
+        functions_tested_by,
+        get_example_files,
+        get_test_coverage_ratio,
+        get_test_detection_config,
+        get_test_files,
+        get_tests_for_function,
+        list_example_classes,
+        list_example_functions,
+        list_test_classes,
+        list_test_functions,
+        untested_classes,
+        untested_functions,
     )
 
     # Import main MCP server - should import all tools
