@@ -10,6 +10,7 @@ import sys
 import pytest
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
+from neo4j.exceptions import DriverError, Neo4jError
 
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -49,7 +50,7 @@ def test_graph_summary():
             else:
                 logger.warning("No data in graph or connection failed")
                 pytest.skip("No data in graph - skipping this test")
-    except Exception as e:  # noqa: BLE001 -- any connection/driver error should skip, not fail, the test
+    except (DriverError, Neo4jError) as e:
         logger.warning(f"Neo4j connection failed: {e!s}")
         pytest.skip("Neo4j connection failed - skipping this test")
 
@@ -73,7 +74,7 @@ def test_function_query():
             else:
                 logger.warning("No functions found in graph or connection failed")
                 pytest.skip("No functions found in graph - skipping test")
-    except Exception as e:  # noqa: BLE001 -- any connection/driver error should skip, not fail, the test
+    except (DriverError, Neo4jError) as e:
         logger.warning(f"Neo4j connection failed: {e!s}")
         pytest.skip("Neo4j connection failed - skipping this test")
 
@@ -97,7 +98,7 @@ def test_call_relationships():
             else:
                 logger.warning("No call relationships found in graph or connection failed")
                 pytest.skip("No call relationships found in graph - skipping test")
-    except Exception as e:  # noqa: BLE001 -- any connection/driver error should skip, not fail, the test
+    except (DriverError, Neo4jError) as e:
         logger.warning(f"Neo4j connection failed: {e!s}")
         pytest.skip("Neo4j connection failed - skipping this test")
 

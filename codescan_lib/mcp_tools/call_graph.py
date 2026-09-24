@@ -187,8 +187,9 @@ def transitive_calls(source_fn: str, target_fn: str, max_depth: int = 10) -> lis
     """
     # Cypher's variable-length relationship bound (*1..N) must be a literal in
     # the query text -- Neo4j does not allow binding it as a query parameter.
+    # int() guards against pasting an unexpected value into the query.
     return q(f"""
-        MATCH path = (source:Function {{name: $source_fn}})-[:CALLS*1..{max_depth}]->(target:Function {{name: $target_fn}})
+        MATCH path = (source:Function {{name: $source_fn}})-[:CALLS*1..{int(max_depth)}]->(target:Function {{name: $target_fn}})
         WHERE length(path) <= $max_depth
         WITH path, [node IN nodes(path) | node.name] AS function_names
         RETURN

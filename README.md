@@ -231,8 +231,8 @@ After configuring, restart Cursor and open the MCP tools panel. You should see C
 ## Docker
 
 ```bash
-docker pull ghcr.io/cocodedk/codesacan:latest
-docker run ghcr.io/cocodedk/codesacan:latest
+docker pull ghcr.io/cocodedk/codescan:latest
+docker run ghcr.io/cocodedk/codescan:latest
 ```
 
 ## Author
