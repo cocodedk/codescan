@@ -19,7 +19,7 @@ def most_called_functions(limit: int = 10) -> list[dict[str, Any]]:
         """
         MATCH (f:Function)
         WHERE coalesce(f.is_reference, false) = false
-        OPTIONAL MATCH (caller:Function)-[:CALLS]->(f)
+        OPTIONAL MATCH (caller)-[:CALLS]->(f) WHERE caller:Function OR caller:File
         WITH f, count(caller) AS num_callers
         ORDER BY num_callers DESC, f.file, f.line
         RETURN f.name AS name, f.file AS file, num_callers

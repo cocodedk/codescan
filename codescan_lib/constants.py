@@ -36,3 +36,9 @@ COLOR_FILE_CONTAINS = "#2196F3"
 # How a TESTS edge was found
 TEST_METHOD_NAMING = "naming_pattern"
 TEST_METHOD_CALL = "call"
+
+# Decorators known to return the class they decorate: a call to such a class builds that class
+CLASS_PRESERVING_DECORATORS = {
+    "dataclass", "dataclasses.dataclass", "total_ordering", "functools.total_ordering",
+    "final", "typing.final", "runtime_checkable", "typing.runtime_checkable", "unique", "enum.unique",
+}

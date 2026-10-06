@@ -33,6 +33,20 @@ REWRITE_INSTANTIATES = """UNWIND $rows AS row
     DELETE old"""
 
 
+def settle(functions: list[Definition], built: list[ClassDefinition], file: str) -> tuple[list[Definition], list[ClassDefinition]]:
+    """Keep the function or the class a call certainly means: one in the caller's file beats any elsewhere.
+
+    A tie in the same tier means neither is certain.
+    """
+    if not (functions and built):
+        return functions, built
+    near_function = any(t.file == file for t in functions)
+    near_class = any(t.file == file for t in built)
+    if near_function != near_class:
+        return (functions, []) if near_function else ([], built)
+    return [], []
+
+
 def resolve_calls(session: Any) -> None:
     """Re-point calls to placeholder nodes at the functions they certainly call, or at the class they certainly build.
 
@@ -49,8 +63,9 @@ def resolve_calls(session: Any) -> None:
 
     classes: dict[str, list[ClassDefinition]] = {}
     for row in session.run("MATCH (c:Class) RETURN c.name AS name, c.file AS file, c.line AS line, "
-                           "coalesce(c.nested, false) AS nested"):
-        classes.setdefault(row["name"], []).append(ClassDefinition(row["name"], row["file"], row["line"], row["nested"]))
+                           "coalesce(c.nested, false) AS nested, coalesce(c.plain, true) AS plain"):
+        classes.setdefault(row["name"], []).append(
+            ClassDefinition(row["name"], row["file"], row["line"], row["nested"], row["plain"]))
 
     files = [(row["path"], row["exports"]) for row in session.run(
         "MATCH (f:File) RETURN f.path AS path, coalesce(f.exports, []) AS exports")]
@@ -63,17 +78,18 @@ def resolve_calls(session: Any) -> None:
         RETURN elementId(caller) AS caller_id, elementId(r) AS edge_id, ref.name AS callee,
                coalesce(caller.file, caller.path) AS caller_file, caller.line AS caller_line,
                r.line AS line, r.args AS args, coalesce(r.kind, 'attr') AS kind,
-               coalesce(r.recv_class, '') AS recv_class, coalesce(r.recv_module, '') AS recv_module
+               coalesce(r.recv_class, '') AS recv_class, coalesce(r.recv_module, '') AS recv_module,
+               coalesce(r.skip_function, false) AS skip_function, coalesce(r.skip_class, false) AS skip_class
     """):
         caller = by_position[(row["caller_file"], row["caller_line"])] if row["caller_line"] else module_scope(row["caller_file"])
         # A receiver that is a project module is never read as a class of the same name
         recv_class = "" if row["recv_module"] and row["recv_module"] in modules else row["recv_class"]
-        functions = choose_targets(caller, row["callee"], index.get(row["callee"], []), by_position,
-                                   row["kind"], recv_class, row["recv_module"], exporters)
-        built = class_targets(caller.file, row["callee"], classes.get(row["callee"], []), row["kind"],
-                              row["recv_module"], exporters)
-        if functions and built:  # a function and a class could both be meant: neither is certain
-            continue
+        functions = [] if row["skip_function"] else choose_targets(
+            caller, row["callee"], index.get(row["callee"], []), by_position,
+            row["kind"], recv_class, row["recv_module"], exporters)
+        built = [] if row["skip_class"] else class_targets(
+            caller.file, row["callee"], classes.get(row["callee"], []), row["kind"], row["recv_module"], exporters)
+        functions, built = settle(functions, built, caller.file)
         fields = {k: row[k] for k in ("caller_id", "edge_id", "line", "args", "kind")}
         for query, targets in ((REWRITE_CALLS, functions), (REWRITE_INSTANTIATES, built)):
             for t in targets:

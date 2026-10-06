@@ -5,6 +5,7 @@ from contextlib import contextmanager
 
 from .bindings import BindingScan, scan_function
 from .call_names import call_kind, callee_name, dotted_name, receiver_hints
+from .call_targets import BARE_CALL
 from .graph_batch import LINKS, GraphBatch
 from .stats_collector import StatsCollector
 
@@ -20,11 +21,22 @@ class CallsMixin(ast.NodeVisitor):
     external_names: set[str]
     import_bindings: dict[str, str]
     current_scope: str
-    module_rebound: set[str]  # names the module binds more than once: never trusted as a receiver or an import
+    module_rebound: set[str]  # names the module binds in a way a receiver cannot rely on (see ModuleScan.untrusted)
+    module_unstable: set[str]  # names the module binds more than once, not only by `def` or `class`
+    deferred: set[int]  # ids of the nodes in lambda bodies and annotations
     blocked_names: set[str]  # names this call's function, or one around it, rebinds: never trusted as a receiver
     enclosing_bound: set[str]  # every name the functions around the one being visited bind, imports included
     sole_bindings: set[str]  # names this function binds exactly once, by something other than an import
     instances: dict[str, tuple[str, int]]  # this function: local name -> (class it was built from, line)
+
+    def _rebound(self, scan: BindingScan) -> set[str]:
+        """Names the scanned body rebinds: every binding but an import made once that nothing outside imported."""
+        imported_outside = {*self.import_bindings, *self.external_names}
+        return {
+            *scan.names,
+            *(name for name, count in scan.imports.items() if count > 1),
+            *(scan.imports.keys() & imported_outside),
+        }
 
     @contextmanager
     def _bindings(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[None]:
@@ -35,13 +47,7 @@ class CallsMixin(ast.NodeVisitor):
         """
         scan = scan_function(node)
         saved = (self.blocked_names, self.enclosing_bound, self.sole_bindings, self.instances)
-        imported_outside = {*self.import_bindings, *self.external_names}
-        rebound = {
-            *scan.names,
-            *(name for name, count in scan.imports.items() if count > 1),
-            *(scan.imports.keys() & imported_outside),
-        }
-        self.blocked_names = self.enclosing_bound | rebound | self.module_rebound
+        self.blocked_names = self.enclosing_bound | self._rebound(scan) | self.module_rebound
         self.enclosing_bound = self.enclosing_bound | scan.names.keys() | scan.imports.keys()
         self.sole_bindings = {name for name, count in scan.names.items() if count == 1 and name not in scan.imports}
         self.instances = {}
@@ -52,12 +58,12 @@ class CallsMixin(ast.NodeVisitor):
 
     @contextmanager
     def _class_bindings(self, node: ast.ClassDef) -> Iterator[None]:
-        """A call in a class body outside its methods never trusts a name the class body binds."""
+        """A call in a class body outside its methods never trusts a name the class body rebinds."""
         scan = BindingScan()
         for statement in node.body:
             scan.visit(statement)
         saved = self.blocked_names
-        self.blocked_names = saved | scan.names.keys() | scan.imports.keys()
+        self.blocked_names = saved | self._rebound(scan)
         try:
             yield
         finally:
@@ -78,7 +84,7 @@ class CallsMixin(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         callee = callee_name(node.func, self.external_names)
-        if callee:
+        if callee and (self.current_function or id(node) not in self.deferred):
             line = getattr(node, "lineno", -1)
             args = ", ".join(ast.unparse(arg) for arg in node.args)
             self.stats.register_call(
@@ -97,6 +103,8 @@ class CallsMixin(ast.NodeVisitor):
                 "MATCH (caller:Function {name: row.caller_name, file: $file, line: row.caller_line, is_reference: false})"
                 if self.current_function else "MATCH (caller:File {path: $file})"
             )
+            kind = call_kind(node.func)
+            bare = kind == BARE_CALL  # a bare name the module rebinds reaches no function; one this scope rebinds, no class
             self.batch.add(
                 LINKS,
                 f"""UNWIND $rows AS row
@@ -105,10 +113,12 @@ class CallsMixin(ast.NodeVisitor):
                 WITH called, row
                 {caller}
                 MERGE (caller)-[:CALLS {{line: row.line, args: row.args, kind: row.kind,
-                                      recv_class: row.recv_class, recv_module: row.recv_module}}]->(called)""",
+                                      recv_class: row.recv_class, recv_module: row.recv_module,
+                                      skip_function: row.skip_function, skip_class: row.skip_class}}]->(called)""",
                 called_name=callee, caller_name=self.current_function,
-                caller_line=self.current_function_line, line=line, args=args, kind=call_kind(node.func),
+                caller_line=self.current_function_line, line=line, args=args, kind=kind,
                 recv_class=recv_class, recv_module=recv_module,
+                skip_function=bare and callee in self.module_unstable, skip_class=bare and callee in self.blocked_names,
             )
 
         # Calls nested in the arguments (or the callee expression) still count

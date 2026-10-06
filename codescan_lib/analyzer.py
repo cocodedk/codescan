@@ -7,6 +7,7 @@ from .analyzer_calls import CallsMixin
 from .analyzer_constants import ConstantsMixin
 from .analyzer_imports import ImportsMixin
 from .bindings import scan_module
+from .call_names import deferred_nodes, keeps_class
 from .constants import COLOR_CLASS_CONTAINS
 from .coverage_links import link_tests
 from .graph_batch import LINKS, NODES, GraphBatch
@@ -86,8 +87,9 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
 
     def visit_Module(self, node: ast.Module) -> None:
         scan = scan_module(node)
-        self.module_rebound = scan.rebound()
+        self.module_rebound = scan.untrusted()
         self.blocked_names = set(self.module_rebound)  # module-level calls trust what a function would
+        self.module_unstable, self.deferred = scan.unstable(), deferred_nodes(node)
         self.batch.add(  # which names another module can import with certainty (see call_targets.exported_functions)
             LINKS, "UNWIND $rows AS row MATCH (f:File {path: $file}) SET f.exports = row.exports",
             exports=sorted(scan.clean_exports()),
@@ -107,8 +109,9 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
             NODES,
             f"UNWIND $rows AS row MERGE (c{self._labels('Class')} "
             "{name: row.name, file: $file, line: row.line, end_line: row.end_line, length: row.length, "
-            "nested: row.nested})",
+            "nested: row.nested, plain: row.plain})",
             name=node.name, line=line, end_line=end_line, length=length, nested=self.current_scope != "module",
+            plain=keeps_class(node.decorator_list, self.external_names - self.blocked_names),
         )
 
         # Decorators and base classes run in the enclosing scope; the body in the class's

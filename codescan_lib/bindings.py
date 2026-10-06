@@ -90,9 +90,11 @@ class ModuleScan(BindingScan):
     def __init__(self) -> None:
         super().__init__()
         self.defs: Counter[str] = Counter()
+        self.funcs: Counter[str] = Counter()  # the `def` statements among them
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self.defs[node.name] += 1
+        self.funcs[node.name] += 1
         super().visit_FunctionDef(node)
 
     visit_AsyncFunctionDef = visit_FunctionDef
@@ -109,6 +111,16 @@ class ModuleScan(BindingScan):
     def rebound(self) -> set[str]:
         """Names bound more than once, imports included: which binding a call sees is undecided."""
         return {name for name in self.names.keys() | self.imports.keys() if self.sites(name) > 1}
+
+    def untrusted(self) -> set[str]:
+        """Names no receiver or class call can rely on: bound more than once, by a function, or by any site
+        that is no `def`, `class` or import (`A = Other`)."""
+        return self.rebound() | {name for name in self.names if self.names[name] > self.defs[name]} | set(self.funcs)
+
+    def unstable(self) -> set[str]:
+        """Names bound more than once with a site that is no `def` or `class`: a call to one may reach anything."""
+        return {name for name in self.names.keys() | self.imports.keys()
+                if self.sites(name) > 1 and self.sites(name) > self.defs[name]}
 
     def clean_exports(self) -> set[str]:
         """Names bound exactly once, by a `def` or `class`: what another module can import with certainty."""

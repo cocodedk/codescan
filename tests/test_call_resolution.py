@@ -5,7 +5,11 @@ from neo4j import GraphDatabase
 from codescan_lib.analysis import analyze_directory, analyze_file, finalize_graph
 from codescan_lib.constants import NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
 from codescan_lib.db_operations import clear_database
-from codescan_lib.mcp_tools.call_graph import callers, uncalled_functions
+from codescan_lib.mcp_tools.call_graph import (
+    callers,
+    most_called_functions,
+    uncalled_functions,
+)
 from codescan_lib.stats_collector import StatsCollector
 
 
@@ -576,3 +580,94 @@ def test_should_not_resolve_a_module_level_self_call_to_a_method(session, tmp_pa
 def test_should_return_a_file_caller_by_its_path(session, tmp_path):
     scan(session, tmp_path, {"m.py": "def helper(): pass\nhelper()\n"})
     assert {r["caller"] for r in callers("helper")} == {"m.py"}
+
+
+def test_should_not_link_a_constructor_call_on_a_name_the_function_binds(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "def f(Foo): Foo()\nf(lambda: None)\n"})
+    assert instantiated(session) == set()
+
+
+@pytest.mark.parametrize("source", [
+    "def helper(): pass\nhelper = lambda: None\nhelper()\n",
+    "def helper(): pass\ntry:\n    from lib import helper\nexcept ImportError:\n    pass\nhelper()\n",
+])
+def test_should_not_resolve_a_module_level_call_to_a_name_the_module_rebinds(session, tmp_path, source):
+    scan(session, tmp_path, {"m.py": source})
+    assert module_calls(session) == set()
+
+
+def test_should_not_resolve_a_function_call_to_a_name_the_module_rebinds(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nhelper = lambda: None\ndef f():\n    helper()\n"})
+    assert ("f", "helper") not in resolved_calls(session)
+
+
+def test_should_not_link_a_constructor_call_to_a_name_the_module_rebinds(session, tmp_path):
+    scan(session, tmp_path, {"a.py": FOO, "m.py": "Foo = lambda: None\nFoo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_not_trust_a_module_name_bound_by_assignment_as_a_receiver(session, tmp_path):
+    files = {"a.py": "class A:\n    def run(): pass\n",
+             "m.py": "class Other:\n    def run(): pass\nA = Other\nA.run()\n"}
+    scan(session, tmp_path, files)
+    assert ("m.py", "A.run") not in module_calls(session)
+
+
+@pytest.mark.parametrize("source", [
+    "def helper(): pass\nunused = lambda: helper()\n",
+    "from __future__ import annotations\ndef helper(): pass\ndef f(x: helper()): pass\n",
+    "def helper(): pass\ndef f() -> helper(): pass\n",
+    "def helper(): pass\nx: helper() = 1\n",
+])
+def test_should_not_record_deferred_code_as_a_module_level_call(session, tmp_path, source):
+    scan(session, tmp_path, {"m.py": source})
+    assert module_calls(session) == set()
+
+
+def test_should_record_a_lambda_default_as_a_module_level_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nunused = lambda x=helper(): x\n"})
+    assert module_calls(session) == {("m.py", "helper")}
+
+
+def test_should_not_link_a_constructor_call_to_a_class_replaced_by_its_decorator(session, tmp_path):
+    source = "def decorate(cls): return lambda: 42\n@decorate\nclass Foo: pass\nFoo()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert instantiated(session) == set()
+
+
+@pytest.mark.parametrize("decorator", [
+    "@dataclass", "@dataclass(frozen=True)", "@dataclasses.dataclass", "@dataclasses.dataclass(frozen=True)",
+    "@functools.total_ordering", "@typing.final",
+])
+def test_should_link_a_constructor_call_to_a_class_with_a_known_decorator(session, tmp_path, decorator):
+    source = f"import dataclasses, functools, typing\nfrom dataclasses import dataclass\n{decorator}\nclass Foo: pass\nFoo()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert instantiated(session) == {("m.py", "Foo", "m.py")}
+
+
+def test_should_not_trust_a_decorator_named_like_a_known_one_when_it_is_defined_here(session, tmp_path):
+    source = "def dataclass(cls): return lambda: 42\n@dataclass\nclass Foo: pass\nFoo()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert instantiated(session) == set()
+
+
+def test_should_prefer_a_same_file_function_over_a_class_in_another_file(session, tmp_path):
+    files = {"m.py": "def helper(): pass\ndef f():\n    helper()\n", "other.py": "class helper: pass\n"}
+    scan(session, tmp_path, files)
+    assert (("f", "helper") in resolved_calls(session), instantiated(session)) == (True, set())
+
+
+def test_should_prefer_a_same_file_class_over_a_function_in_another_file(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "def f():\n    Foo()\n", "other.py": "def Foo(): pass\n"})
+    assert (("f", "Foo") in resolved_calls(session), instantiated(session)) == (False, {("f", "Foo", "m.py")})
+
+
+def test_should_resolve_a_call_on_a_module_imported_in_a_class_body(session, tmp_path):
+    source = "def f():\n    class C:\n        import lib\n        lib.helper()\n"
+    scan(session, tmp_path, {"lib.py": "def helper(): pass\n", "m.py": source})
+    assert ("f", "helper") in resolved_calls(session)
+
+
+def test_should_count_a_file_caller_in_most_called_functions(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def main(): pass\nmain()\n"})
+    assert {r["name"]: r["num_callers"] for r in most_called_functions(limit=100)} == {"main": 1}

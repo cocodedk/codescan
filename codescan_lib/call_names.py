@@ -2,7 +2,7 @@
 import ast
 
 from .call_targets import ATTR_CALL, BARE_CALL, SELF_CALL, SELF_NAMES
-from .constants import BUILTIN_FUNCTIONS
+from .constants import BUILTIN_FUNCTIONS, CLASS_PRESERVING_DECORATORS
 
 
 def callee_name(func: ast.expr, external_names: set[str]) -> str | None:
@@ -75,3 +75,31 @@ def receiver_hints(
     root = _root(receiver)
     name = dotted_name(receiver, imports, blocked)
     return name, name if root and root.id in imports else ""
+
+
+def keeps_class(decorators: list[ast.expr], trusted_imports: set[str]) -> bool:
+    """True when every decorator is a known one (`@dataclass`, `@functools.total_ordering(...)`) imported from outside."""
+    for decorator in decorators:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        root = target
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        known = isinstance(root, ast.Name) and root.id in trusted_imports
+        if not known or ast.unparse(target) not in CLASS_PRESERVING_DECORATORS:
+            return False
+    return True
+
+
+def _deferred_roots(node: ast.AST) -> list[ast.expr | None]:
+    if isinstance(node, ast.Lambda):
+        return [node.body]
+    if isinstance(node, ast.arg | ast.AnnAssign):
+        return [node.annotation]
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+        return [node.returns]
+    return []
+
+
+def deferred_nodes(tree: ast.Module) -> set[int]:
+    """ids of the nodes inside lambda bodies and annotations: code that runs later, or never, not at definition."""
+    return {id(inner) for node in ast.walk(tree) for root in _deferred_roots(node) if root for inner in ast.walk(root)}
