@@ -6,7 +6,6 @@ import importlib
 
 def test_tool_imports():
     """Test that all tools can be imported from their modules."""
-    # Core tools
     # Call graph tools
     from codescan_lib.mcp_tools.call_graph import (
         callees,
@@ -32,6 +31,8 @@ def test_tool_imports():
         repetitive_constant_names,
         repetitive_constants,
     )
+
+    # Core tools
     from codescan_lib.mcp_tools.core import (
         get_connection_status_tool,
         graph_summary,
@@ -61,8 +62,6 @@ def test_tool_imports():
         untested_classes,
         untested_functions,
     )
-
-    # Import main MCP server - should import all tools
 
     # Verify all expected functions are callable
     assert callable(get_connection_status_tool)
