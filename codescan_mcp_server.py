@@ -9,6 +9,7 @@ from codescan_lib.mcp_tools.class_tools import *
 from codescan_lib.mcp_tools.constant_tools import *
 from codescan_lib.mcp_tools.core import *
 from codescan_lib.mcp_tools.file_tools import *
+from codescan_lib.mcp_tools.flow_tools import *
 from codescan_lib.mcp_tools.test_tools import *
 
 

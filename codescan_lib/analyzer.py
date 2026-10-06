@@ -10,6 +10,7 @@ from .bindings import scan_module
 from .call_names import deferred_nodes, import_origins, keeps_class
 from .constants import COLOR_CLASS_CONTAINS
 from .coverage_links import link_tests
+from .forwarders import mark_forwarder
 from .graph_batch import LINKS, NODES, GraphBatch
 from .stats_collector import StatsCollector
 from .utils import is_example_file, node_span
@@ -175,6 +176,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
                 color=COLOR_CLASS_CONTAINS, class_name=owner, func_name=full_name, line=line,
             )
 
+        mark_forwarder(self.batch, node, full_name, line, owner is not None, self.external_names)
         # Decorators, defaults and annotations run in the enclosing scope; the body in the function's
         self._visit_all([*node.decorator_list, node.args])
         if node.returns:
