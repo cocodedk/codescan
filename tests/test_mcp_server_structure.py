@@ -48,19 +48,21 @@ def test_tool_imports():
     )
 
     # Test tools
-    from codescan_lib.mcp_tools.test_tools import (
+    from codescan_lib.mcp_tools.test_coverage_tools import (
         functions_tested_by,
-        get_example_files,
         get_test_coverage_ratio,
+        get_tests_for_function,
+        untested_classes,
+        untested_functions,
+    )
+    from codescan_lib.mcp_tools.test_tools import (
+        get_example_files,
         get_test_detection_config,
         get_test_files,
-        get_tests_for_function,
         list_example_classes,
         list_example_functions,
         list_test_classes,
         list_test_functions,
-        untested_classes,
-        untested_functions,
     )
 
     # Verify all expected functions are callable
@@ -109,7 +111,8 @@ def test_module_structure():
         "codescan_lib.mcp_tools.call_graph",
         "codescan_lib.mcp_tools.class_tools",
         "codescan_lib.mcp_tools.constant_tools",
-        "codescan_lib.mcp_tools.test_tools"
+        "codescan_lib.mcp_tools.test_tools",
+        "codescan_lib.mcp_tools.test_coverage_tools"
     ]
 
     for module_name in modules:

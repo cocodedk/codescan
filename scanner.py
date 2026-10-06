@@ -29,7 +29,7 @@ from codescan_lib import (
 )
 
 
-def main():
+def main() -> None:
     """Main function to parse arguments and run the scanner."""
     # Initialize pattern variables with defaults from the module
     test_dir_patterns = list(TEST_DIR_PATTERNS)

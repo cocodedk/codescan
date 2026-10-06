@@ -3,6 +3,7 @@ import fnmatch
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from .constants import TEST_DIR_PATTERNS, TEST_FILE_PATTERNS
 
@@ -27,7 +28,7 @@ def node_span(node: ast.AST) -> tuple[int, int, int]:
     length = end_line - line + 1 if line >= 0 and end_line >= 0 else 0
     return line, end_line, length
 
-def is_example_file(file_path):
+def is_example_file(file_path: str) -> bool:
     """
     Determine if a file is in the examples directory.
 
@@ -39,7 +40,7 @@ def is_example_file(file_path):
     """
     return 'examples' in os.path.normpath(file_path).replace('\\', '/').split('/')
 
-def is_test_file(file_path, custom_patterns=None):
+def is_test_file(file_path: str, custom_patterns: dict[str, Any] | None = None) -> bool:
     """
     Determine if a file is a test file based on configured patterns.
 
@@ -76,12 +77,12 @@ def is_test_file(file_path, custom_patterns=None):
 
     return False
 
-def is_project_file(file_path, base_dir):
+def is_project_file(file_path: str, base_dir: str) -> bool:
     """Check if a file is part of the project (not in standard library)."""
     abs_path = os.path.abspath(file_path)
     return Path(abs_path).is_relative_to(os.path.abspath(base_dir))
 
-def get_relative_path(file_path, base_dir):
+def get_relative_path(file_path: str, base_dir: str) -> str:
     """Convert absolute file path to path relative to the project directory."""
     abs_file_path = os.path.abspath(file_path)
     abs_base_dir = os.path.abspath(base_dir)

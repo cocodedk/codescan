@@ -6,7 +6,7 @@ from codescan_lib.analysis import analyze_directory
 from codescan_lib.constants import NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
 from codescan_lib.db_operations import clear_database
 from codescan_lib.mcp_tools.call_graph import uncalled_functions
-from codescan_lib.mcp_tools.test_tools import untested_functions
+from codescan_lib.mcp_tools.test_coverage_tools import untested_functions
 
 
 @pytest.fixture

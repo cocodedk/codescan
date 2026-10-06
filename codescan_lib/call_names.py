@@ -1,10 +1,13 @@
 """Read the callee and the shape of a call from its AST node."""
 import ast
 
-from .call_targets import ATTR_CALL, BARE_CALL, SELF_CALL, SELF_NAMES
 from .constants import (
+    ATTR_CALL,
+    BARE_CALL,
     BUILTIN_FUNCTIONS,
     CLASS_PRESERVING_DECORATORS,
+    SELF_CALL,
+    SELF_NAMES,
     TYPE_CHECKING_MODULES,
     TYPE_CHECKING_NAME,
 )

@@ -12,6 +12,7 @@ SELF_PARAMETERS = 1  # a method's first parameter is the receiver, never passed 
 
 
 def is_docstring(value: ast.expr) -> bool:
+    """True when the expression is a string constant (a docstring when it is a statement)."""
     return isinstance(value, ast.Constant) and isinstance(value.value, str)
 
 

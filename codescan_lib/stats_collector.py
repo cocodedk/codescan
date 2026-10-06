@@ -9,19 +9,27 @@ import time
 from collections import Counter
 from typing import Any
 
+from .constants import (
+    FILE_TYPE_EXAMPLE,
+    FILE_TYPE_PRODUCTION,
+    FILE_TYPE_TEST,
+    STAT_CALLS,
+    STAT_CLASSES,
+    STAT_CONSTANTS,
+    STAT_FUNCTIONS,
+    STAT_IMPORTS,
+    STAT_REFERENCE_FUNCTIONS,
+    STAT_TEST_CLASSES,
+    STAT_TEST_FUNCTIONS,
+)
+from .stats_report import print_summary
+
 
 class StatsCollector:
-    """
-    Collects statistics during code scanning and provides methods to display them.
-    """
+    """Collects statistics during code scanning and provides methods to display them."""
 
-    def __init__(self, verbose: bool = False):
-        """
-        Initialize the statistics collector.
-
-        Args:
-            verbose: Whether to print verbose output during scanning
-        """
+    def __init__(self, verbose: bool = False) -> None:
+        """Initialize the statistics collector."""
         self.verbose = verbose
         self.start_time = time.time()
 
@@ -32,21 +40,21 @@ class StatsCollector:
 
         # Type counters
         self.elements = Counter({
-            'classes': 0,
-            'functions': 0,
-            'constants': 0,
-            'calls': 0,
-            'imports': 0,
-            'reference_functions': 0,
-            'test_functions': 0,
-            'test_classes': 0
+            STAT_CLASSES: 0,
+            STAT_FUNCTIONS: 0,
+            STAT_CONSTANTS: 0,
+            STAT_CALLS: 0,
+            STAT_IMPORTS: 0,
+            STAT_REFERENCE_FUNCTIONS: 0,
+            STAT_TEST_FUNCTIONS: 0,
+            STAT_TEST_CLASSES: 0
         })
 
         # File type counters
         self.file_types = Counter({
-            'production': 0,
-            'test': 0,
-            'example': 0
+            FILE_TYPE_PRODUCTION: 0,
+            FILE_TYPE_TEST: 0,
+            FILE_TYPE_EXAMPLE: 0
         })
 
         # Sets to track unique elements
@@ -58,13 +66,7 @@ class StatsCollector:
         self.errors: list[dict[str, Any]] = []
 
     def register_file(self, file_path: str, file_type: str) -> None:
-        """
-        Register a file that's being analyzed.
-
-        Args:
-            file_path: Path to the file
-            file_type: Type of file (production, test, example)
-        """
+        """Register a file that's being analyzed."""
         self.files_scanned += 1
         self.file_types[file_type] += 1
         self.unique_files.add(file_path)
@@ -73,27 +75,14 @@ class StatsCollector:
             print(f"Analyzing file: {file_path} - {file_type} file")
 
     def register_skipped_file(self, file_path: str, reason: str) -> None:
-        """
-        Register a file that's being skipped.
-
-        Args:
-            file_path: Path to the file
-            reason: Reason for skipping
-        """
+        """Register a file that's being skipped."""
         self.files_skipped += 1
 
         if self.verbose:
             print(f"Skipping file: {file_path} - {reason}")
 
     def register_file_error(self, file_path: str, error_type: str, error_msg: str) -> None:
-        """
-        Register an error that occurred during file analysis.
-
-        Args:
-            file_path: Path to the file
-            error_type: Type of error
-            error_msg: Error message
-        """
+        """Register an error that occurred during file analysis."""
         self.files_error += 1
         self.errors.append({
             'file': file_path,
@@ -105,95 +94,55 @@ class StatsCollector:
             print(f"Error in file {file_path}: {error_type} - {error_msg}")
 
     def register_class(self, name: str, file_path: str, line: int, is_test: bool = False, is_example: bool = False) -> None:
-        """
-        Register a class that's found during analysis.
-
-        Args:
-            name: Name of the class
-            file_path: Path to the file
-            line: Line number
-            is_test: Whether it's a test class
-            is_example: Whether it's an example class
-        """
-        self.elements['classes'] += 1
+        """Register a class that's found during analysis."""
+        self.elements[STAT_CLASSES] += 1
         self.unique_classes.add(f"{file_path}:{name}")
 
         if is_test:
-            self.elements['test_classes'] += 1
+            self.elements[STAT_TEST_CLASSES] += 1
 
         if self.verbose:
             print(f"Found class: {name} in {file_path} at line {line}")
 
     def register_function(self, name: str, file_path: str, line: int, is_test: bool = False,
                          is_reference: bool = False, length: int = 0) -> None:
-        """
-        Register a function that's found during analysis.
-
-        Args:
-            name: Name of the function
-            file_path: Path to the file
-            line: Line number
-            is_test: Whether it's a test function
-            is_reference: Whether it's a reference function
-            length: Length of the function in lines
-        """
-        self.elements['functions'] += 1
+        """Register a function that's found during analysis."""
+        self.elements[STAT_FUNCTIONS] += 1
         self.unique_functions.add(f"{file_path}:{name}")
 
         if is_test:
-            self.elements['test_functions'] += 1
+            self.elements[STAT_TEST_FUNCTIONS] += 1
 
         if is_reference:
-            self.elements['reference_functions'] += 1
+            self.elements[STAT_REFERENCE_FUNCTIONS] += 1
 
         if self.verbose:
             print(f"Found function: {name} in {file_path} at line {line}{' (reference)' if is_reference else ''}")
 
     def register_constant(self, name: str, file_path: str, line: int, value: str, type_name: str) -> None:
-        """
-        Register a constant that's found during analysis.
-
-        Args:
-            name: Name of the constant
-            file_path: Path to the file
-            line: Line number
-            value: Value of the constant
-            type_name: Type of the constant
-        """
-        self.elements['constants'] += 1
+        """Register a constant that's found during analysis."""
+        self.elements[STAT_CONSTANTS] += 1
 
         if self.verbose:
             print(f"Found constant: {name} = {value} ({type_name}) in {file_path} at line {line}")
 
     def register_call(self, caller: str, callee: str, file_path: str, line: int, args: str = "") -> None:
-        """
-        Register a function call that's found during analysis.
-
-        Args:
-            caller: Name of the calling function
-            callee: Name of the called function
-            file_path: Path to the file
-            line: Line number
-            args: Arguments of the call
-        """
-        self.elements['calls'] += 1
+        """Register a function call that's found during analysis."""
+        self.elements[STAT_CALLS] += 1
 
         if self.verbose:
             print(f"Found call: {caller} -> {callee} in {file_path} at line {line}")
 
     def register_import(self, name: str, file_path: str, is_test: bool = False) -> None:
-        """
-        Register an import that's found during analysis.
-
-        Args:
-            name: Name of the imported module/object
-            file_path: Path to the file
-            is_test: Whether it's in a test file
-        """
-        self.elements['imports'] += 1
+        """Register an import that's found during analysis."""
+        self.elements[STAT_IMPORTS] += 1
 
         if self.verbose and is_test:
             print(f"Found import in test file: {name} in {file_path}")
+
+    def set_reference_functions(self, count: int) -> None:
+        """Set the number of callee names no definition was found for (known only after calls are resolved)."""
+        self.elements[STAT_REFERENCE_FUNCTIONS] = count
 
     def get_summary(self) -> dict[str, Any]:
         """
@@ -215,37 +164,12 @@ class StatsCollector:
             'elements': dict(self.elements),
             'unique': {
                 'files': len(self.unique_files),
-                'classes': len(self.unique_classes),
-                'functions': len(self.unique_functions)
+                STAT_CLASSES: len(self.unique_classes),
+                STAT_FUNCTIONS: len(self.unique_functions)
             },
             'errors': self.errors
         }
 
     def print_summary(self) -> None:
-        """
-        Print a summary of the collected statistics.
-        """
-        summary = self.get_summary()
-        elapsed = summary['time_elapsed']
-
-        print("\n=== Code Scanning Summary ===")
-        print(f"Time elapsed: {elapsed:.2f} seconds")
-        print(f"Files scanned: {summary['files']['total']} ({summary['files']['skipped']} skipped, {summary['files']['error']} errors)")
-        print(f"File types: {summary['files']['by_type']}")
-        print("Elements found:")
-        for name, count in summary['elements'].items():
-            print(f"  - {name}: {count}")
-
-        print("Unique elements:")
-        for name, count in summary['unique'].items():
-            print(f"  - {name}: {count}")
-
-        if summary['errors']:
-            print(f"\nErrors encountered: {len(summary['errors'])}")
-            for error in summary['errors'][:5]:  # Show first 5 errors
-                print(f"  - {error['file']}: {error['type']} - {error['message']}")
-
-            if len(summary['errors']) > 5:
-                print(f"  ... and {len(summary['errors']) - 5} more errors")
-
-        print("=== End of Summary ===")
+        """Print a summary of the collected statistics."""
+        print_summary(self.get_summary())

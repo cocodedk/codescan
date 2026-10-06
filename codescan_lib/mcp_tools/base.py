@@ -6,12 +6,13 @@ This module contains common functionality used by all MCP tools.
 import logging
 import os
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
 from dotenv import load_dotenv
 from mcp.server.mcpserver import MCPServer
-from neo4j import GraphDatabase, basic_auth
+from neo4j import Driver, GraphDatabase, Session, basic_auth
 
 # --- Configuration & Setup ---
 load_dotenv(".env", override=True)
@@ -63,7 +64,7 @@ mcp = MCPServer("codescan_neo4j",
               instructions="Neo4j code graph analyzer for Python codebases")
 
 # --- Neo4j Connection ---
-driver = None
+driver: Driver | None = None
 
 def verify_database_connection() -> dict[str, Any]:
     """Verify connection to Neo4j database and return status."""
@@ -116,7 +117,7 @@ if initial_connection_status["success"]:
         logger.error(f"Failed to create Neo4j driver: {e}")
 
 # --- Query Helper ---
-def q(cypher: str, **params) -> list[dict[str, Any]]:
+def q(cypher: str, **params: Any) -> list[dict[str, Any]]:
     """Run a Cypher query and return list of dicts."""
     if MCP_SERVER_LOGGING_ENABLED and DEBUG_MCP:
         logger.debug(f"Executing Cypher Query: {cypher}")
@@ -137,7 +138,7 @@ def q(cypher: str, **params) -> list[dict[str, Any]]:
         return []
 
 @contextmanager
-def get_db_session():
+def get_db_session() -> Iterator[Session]:
     """
     Context manager for Neo4j database sessions.
 

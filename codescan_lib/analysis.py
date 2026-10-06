@@ -2,10 +2,16 @@ import ast
 import os
 from typing import Any
 
+from neo4j import Session
 from tqdm import tqdm
 
 from .analyzer import CodeAnalyzer
-from .constants import IGNORE_DIRS
+from .constants import (
+    FILE_TYPE_EXAMPLE,
+    FILE_TYPE_PRODUCTION,
+    FILE_TYPE_TEST,
+    IGNORE_DIRS,
+)
 from .coverage_links import link_tests
 from .db_operations import ensure_indexes, link_file_contents
 from .import_edges import resolve_imports
@@ -22,7 +28,7 @@ from .utils import (
 
 def analyze_file(
     file_path: str,
-    session,
+    session: Session,
     base_dir: str,
     stats_collector: StatsCollector | None = None,
     custom_patterns: dict[str, Any] | None = None,
@@ -60,7 +66,7 @@ def analyze_file(
     is_example_flag = is_example_file(rel_path)
 
     file_type = (
-        "test" if is_test_flag else "example" if is_example_flag else "production"
+        FILE_TYPE_TEST if is_test_flag else FILE_TYPE_EXAMPLE if is_example_flag else FILE_TYPE_PRODUCTION
     )
 
     # Register file with stats collector
@@ -123,7 +129,7 @@ def analyze_file(
 
 def analyze_directory(
     directory: str,
-    session,
+    session: Session,
     ignore_dirs: list[str] | None = None,
     custom_patterns: dict[str, Any] | None = None,
     verbose: bool = False,
@@ -171,11 +177,11 @@ def analyze_directory(
         )
 
     finalize_graph(session, custom_patterns)
-    stats.elements["reference_functions"] = count_unresolved(session)
+    stats.set_reference_functions(count_unresolved(session))
     return stats
 
 
-def finalize_graph(session, custom_patterns: dict[str, Any] | None = None) -> None:
+def finalize_graph(session: Session, custom_patterns: dict[str, Any] | None = None) -> None:
     """Resolve calls and link tests across every file analyzed so far."""
     resolve_calls(session)
     resolve_imports(session)

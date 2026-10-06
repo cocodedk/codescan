@@ -12,6 +12,10 @@ from codescan_lib.mcp_tools.file_tools import *
 from codescan_lib.mcp_tools.flow_tools import *
 from codescan_lib.mcp_tools.test_tools import *
 
+# Tools are listed in the order they register: the coverage tools come after test_tools
+# isort: split
+from codescan_lib.mcp_tools.test_coverage_tools import *
+
 
 def main() -> None:
     """Serve the CodeScan tools over stdio until the client disconnects."""

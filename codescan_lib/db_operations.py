@@ -1,6 +1,6 @@
 import os
 
-from neo4j import GraphDatabase
+from neo4j import Driver, GraphDatabase, Session
 
 from .constants import (
     COLOR_FILE_CONTAINS,
@@ -8,10 +8,11 @@ from .constants import (
     NEO4J_PASSWORD,
     NEO4J_URI,
     NEO4J_USER,
+    SCOPE_MODULE,
 )
 
 
-def clear_database(session, quiet: bool = False):
+def clear_database(session: Session, quiet: bool = False) -> None:
     """
     Clear all nodes and relationships in the database.
 
@@ -23,16 +24,16 @@ def clear_database(session, quiet: bool = False):
         print("Clearing database...")
     session.run("MATCH (n) DETACH DELETE n")
 
-def get_db_session():
+def get_db_session() -> Session:
     """Create and return a Neo4j database session."""
     driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
     return driver.session()
 
-def close_db_connection(driver):
+def close_db_connection(driver: Driver) -> None:
     """Close the Neo4j database connection."""
     driver.close()
 
-def print_db_info(quiet: bool = False):
+def print_db_info(quiet: bool = False) -> None:
     """
     Print database connection information and usage instructions.
 
@@ -63,13 +64,13 @@ INDEXES = (
 )
 
 
-def ensure_indexes(session) -> None:
+def ensure_indexes(session: Session) -> None:
     """Create the indexes a scan's lookups need, if they are missing."""
     for statement in INDEXES:
         session.run(statement)
 
 
-def link_file_contents(session, rel_path: str) -> None:
+def link_file_contents(session: Session, rel_path: str) -> None:
     """Connect a File node to the classes, functions and constants defined in it."""
     session.run(
         "MATCH (f:File {path: $path}) MATCH (c:Class {file: $path}) MERGE (f)-[:CONTAINS {color: $color}]->(c)",
@@ -91,10 +92,10 @@ def link_file_contents(session, rel_path: str) -> None:
     )
     # Constants that are not inside a class or function
     session.run(
-        """
-        MATCH (f:File {path: $path})
-        MATCH (const:Constant {file: $path, scope: 'module'})
-        MERGE (f)-[:CONTAINS {color: $color}]->(const)
+        f"""
+        MATCH (f:File {{path: $path}})
+        MATCH (const:Constant {{file: $path, scope: '{SCOPE_MODULE}'}})
+        MERGE (f)-[:CONTAINS {{color: $color}}]->(const)
         """,
         path=rel_path,
         color=COLOR_FILE_CONTAINS,
