@@ -187,7 +187,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mcp", extras = ["cli"], specifier = ">=2.2.0,<3.0.0" },
+    { name = "mcp", extras = ["cli"], specifier = ">=2.3.0,<3.0.0" },
     { name = "neo4j", specifier = ">=6.3.1" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "tqdm", specifier = ">=4.70.1" },
