@@ -5,7 +5,8 @@ from typing import Any
 from tqdm import tqdm
 
 from .analyzer import CodeAnalyzer
-from .constants import IGNORE_DIRS
+from .constants import COLOR_FILE_CONTAINS, IGNORE_DIRS
+from .relationships import count_unresolved, link_tests, resolve_calls
 from .stats_collector import StatsCollector
 from .utils import get_relative_path, is_example_file, is_project_file, is_test_file
 
@@ -17,6 +18,7 @@ def analyze_file(
     stats_collector: StatsCollector | None = None,
     custom_patterns: dict[str, Any] | None = None,
     skip_dunder_methods: bool = True,
+    defer_relationships: bool = False,
 ) -> None:
     """
     Analyze a single Python file and add its content to the graph database.
@@ -28,6 +30,10 @@ def analyze_file(
         stats_collector: Statistics collector to use
         custom_patterns: Dictionary with custom test detection patterns
         skip_dunder_methods: Whether to skip dunder methods (default: True)
+        defer_relationships: Leave call resolution and test linking to finalize_graph().
+            Pass True when analyzing several files and call finalize_graph() once at the
+            end: resolving per file settles each call on what has been scanned so far,
+            so the result then depends on the order of the files
     """
     # Use provided stats collector or create a new one
     stats = stats_collector if stats_collector is not None else StatsCollector()
@@ -87,9 +93,10 @@ def analyze_file(
             )
             analyzer.visit(tree)
 
-            # Process test relationships if this is a test file
-            if is_test_flag:
-                analyzer.process_test_relationships(custom_patterns)
+            if not defer_relationships:
+                resolve_calls(session)
+                if is_test_flag:
+                    analyzer.process_test_relationships(custom_patterns)
 
             # After analyzing the file, create relationships between the File node and its contents
             # Link File to its Classes
@@ -97,9 +104,10 @@ def analyze_file(
                 """
                 MATCH (f:File {path: $path})
                 MATCH (c:Class {file: $path})
-                MERGE (f)-[:CONTAINS {color: "#2196F3"}]->(c)
+                MERGE (f)-[:CONTAINS {color: $color}]->(c)
                 """,
                 path=rel_path,
+                color=COLOR_FILE_CONTAINS,
             )
 
             # Link File to its Functions (that aren't in classes)
@@ -107,12 +115,13 @@ def analyze_file(
                 """
                 MATCH (f:File {path: $path})
                 MATCH (func:Function {file: $path})
-                WHERE NOT EXISTS {
+                WHERE func.is_reference = false AND NOT EXISTS {
                   MATCH (c:Class)-[:CONTAINS]->(func)
                 }
-                MERGE (f)-[:CONTAINS {color: "#2196F3"}]->(func)
+                MERGE (f)-[:CONTAINS {color: $color}]->(func)
                 """,
                 path=rel_path,
+                color=COLOR_FILE_CONTAINS,
             )
 
             # Link File to its Constants (that aren't in classes or functions)
@@ -120,9 +129,10 @@ def analyze_file(
                 """
                 MATCH (f:File {path: $path})
                 MATCH (const:Constant {file: $path, scope: 'module'})
-                MERGE (f)-[:CONTAINS {color: "#2196F3"}]->(const)
+                MERGE (f)-[:CONTAINS {color: $color}]->(const)
                 """,
                 path=rel_path,
+                color=COLOR_FILE_CONTAINS,
             )
 
     except SyntaxError as e:
@@ -158,37 +168,35 @@ def analyze_directory(
     if ignore_dirs is None:
         ignore_dirs = IGNORE_DIRS
 
-    # Create a stats collector
     stats = StatsCollector(verbose=verbose)
 
     # Store the base directory to identify project files
     base_dir = os.path.abspath(directory)
 
-    # First count how many Python files we need to process for the progress bar
-    total_files = 0
+    # Collect the files first so the progress bar knows the total
+    python_files: list[str] = []
     for root, dirs, files in os.walk(directory):
         # Modify dirs in-place to avoid traversing ignored directories
         dirs[:] = [d for d in dirs if d not in ignore_dirs]
-        total_files += sum(1 for file in files if file.endswith(".py"))
+        python_files += [os.path.join(root, f) for f in files if f.endswith(".py")]
 
-    # Now process the files with a progress bar
-    with tqdm(total=total_files, desc="Analyzing files", unit="file") as pbar:
-        for root, dirs, files in os.walk(directory):
-            # Modify dirs in-place to avoid traversing ignored directories
-            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+    for full_path in tqdm(python_files, desc="Analyzing files", unit="file"):
+        analyze_file(
+            full_path,
+            session,
+            base_dir,
+            stats,
+            custom_patterns,
+            skip_dunder_methods,
+            defer_relationships=True,
+        )
 
-            for file in files:
-                if file.endswith(".py"):
-                    full_path = os.path.join(root, file)
-                    analyze_file(
-                        full_path,
-                        session,
-                        base_dir,
-                        stats,
-                        custom_patterns,
-                        skip_dunder_methods,
-                    )
-                    pbar.update(1)
-
-    # Return the stats collector for the caller to use
+    finalize_graph(session, custom_patterns)
+    stats.elements["reference_functions"] = count_unresolved(session)
     return stats
+
+
+def finalize_graph(session, custom_patterns: dict[str, Any] | None = None) -> None:
+    """Resolve calls and link tests across every file analyzed so far."""
+    resolve_calls(session)
+    link_tests(session, (custom_patterns or {}).get("test_funcs"))

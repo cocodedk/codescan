@@ -5,7 +5,7 @@ This package contains modules for analyzing Python code and constructing a graph
 database representation of the code structure using Neo4j.
 """
 
-from .analysis import analyze_directory, analyze_file
+from .analysis import analyze_directory, analyze_file, finalize_graph
 from .analyzer import CodeAnalyzer
 from .constants import (
     BUILTIN_FUNCTIONS,
@@ -54,5 +54,5 @@ __all__ = [  # noqa: RUF022
     'clear_database', 'close_db_connection', 'get_db_session', 'print_db_info',
 
     # Analysis functions
-    'analyze_directory', 'analyze_file',
+    'analyze_directory', 'analyze_file', 'finalize_graph',
 ]

@@ -24,3 +24,11 @@ IGNORE_DIRS = ['.git', '__pycache__', 'drp_venv', 'venv', '.venv', 'node_modules
 
 # Set of built-in functions to ignore
 BUILTIN_FUNCTIONS = set(dir(builtins))
+
+# Edge colours used when writing relationships to the graph
+COLOR_CALLS = "#FF9800"
+COLOR_CLASS_CONTAINS = "#9C27B0"
+COLOR_DEFINES = "#E91E63"
+COLOR_IMPORTS = "#4CAF50"
+COLOR_TESTS = "#3F51B5"
+COLOR_FILE_CONTAINS = "#2196F3"
