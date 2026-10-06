@@ -2,7 +2,13 @@ import os
 
 from neo4j import GraphDatabase
 
-from .constants import NEO4J_HOST, NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
+from .constants import (
+    COLOR_FILE_CONTAINS,
+    NEO4J_HOST,
+    NEO4J_PASSWORD,
+    NEO4J_URI,
+    NEO4J_USER,
+)
 
 
 def clear_database(session, quiet: bool = False):
@@ -61,3 +67,35 @@ def ensure_indexes(session) -> None:
     """Create the indexes a scan's lookups need, if they are missing."""
     for statement in INDEXES:
         session.run(statement)
+
+
+def link_file_contents(session, rel_path: str) -> None:
+    """Connect a File node to the classes, functions and constants defined in it."""
+    session.run(
+        "MATCH (f:File {path: $path}) MATCH (c:Class {file: $path}) MERGE (f)-[:CONTAINS {color: $color}]->(c)",
+        path=rel_path,
+        color=COLOR_FILE_CONTAINS,
+    )
+    # Functions that are not methods
+    session.run(
+        """
+        MATCH (f:File {path: $path})
+        MATCH (func:Function {file: $path})
+        WHERE func.is_reference = false AND NOT EXISTS {
+          MATCH (c:Class)-[:CONTAINS]->(func)
+        }
+        MERGE (f)-[:CONTAINS {color: $color}]->(func)
+        """,
+        path=rel_path,
+        color=COLOR_FILE_CONTAINS,
+    )
+    # Constants that are not inside a class or function
+    session.run(
+        """
+        MATCH (f:File {path: $path})
+        MATCH (const:Constant {file: $path, scope: 'module'})
+        MERGE (f)-[:CONTAINS {color: $color}]->(const)
+        """,
+        path=rel_path,
+        color=COLOR_FILE_CONTAINS,
+    )
