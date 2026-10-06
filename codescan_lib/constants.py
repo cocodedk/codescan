@@ -32,6 +32,10 @@ COLOR_DEFINES = "#E91E63"
 COLOR_IMPORTS = "#4CAF50"
 COLOR_TESTS = "#3F51B5"
 COLOR_FILE_CONTAINS = "#2196F3"
+COLOR_IMPORTS_MODULE = "#00BCD4"
+
+TYPE_CHECKING_NAME = "TYPE_CHECKING"
+TYPE_CHECKING_MODULES = {"typing", "typing_extensions"}  # the modules whose TYPE_CHECKING is the real one
 
 # How a TESTS edge was found
 TEST_METHOD_NAMING = "naming_pattern"

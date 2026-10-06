@@ -2,6 +2,8 @@
 import ast
 from collections import Counter
 
+from .call_names import is_type_checking
+
 
 class BindingScan(ast.NodeVisitor):
     """Counts the binding sites of one function's own scope, nested classes and comprehensions included.
@@ -123,6 +125,10 @@ class ModuleScan(BindingScan):
         return {name for name in self.names.keys() | self.imports.keys()
                 if self.names[name] > self.defs[name] or (self.sites(name) > 1 and self.sites(name) > self.defs[name])}
 
+    def bound_names(self) -> set[str]:
+        """Every name the scan found a binding site for, imports included."""
+        return set(self.names) | set(self.imports)
+
     def clean_exports(self) -> set[str]:
         """Names bound exactly once, by a `def` or `class`: what another module can import with certainty."""
         return {name for name in self.defs if self.sites(name) == 1}
@@ -133,3 +139,27 @@ def scan_module(tree: ast.Module) -> ModuleScan:
     for statement in tree.body:
         scan.visit(statement)
     return scan
+
+
+class RuntimeScan(ModuleScan):
+    """A module scan that leaves out `if TYPE_CHECKING:` bodies: what they bind does not exist at runtime."""
+
+    def __init__(self, origins: dict[str, str], shadowed: set[str]) -> None:
+        super().__init__()
+        self.origins = origins
+        self.shadowed = shadowed
+
+    def visit_If(self, node: ast.If) -> None:
+        if not is_type_checking(node.test, self.origins, self.shadowed):
+            self.generic_visit(node)
+            return
+        for statement in node.orelse:
+            self.visit(statement)
+
+
+def runtime_bound_names(tree: ast.Module, origins: dict[str, str], shadowed: set[str]) -> set[str]:
+    """Names the module binds when it runs."""
+    scan = RuntimeScan(origins, shadowed)
+    for statement in tree.body:
+        scan.visit(statement)
+    return scan.bound_names()

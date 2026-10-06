@@ -2,7 +2,12 @@
 import ast
 
 from .call_targets import ATTR_CALL, BARE_CALL, SELF_CALL, SELF_NAMES
-from .constants import BUILTIN_FUNCTIONS, CLASS_PRESERVING_DECORATORS
+from .constants import (
+    BUILTIN_FUNCTIONS,
+    CLASS_PRESERVING_DECORATORS,
+    TYPE_CHECKING_MODULES,
+    TYPE_CHECKING_NAME,
+)
 
 
 def callee_name(func: ast.expr, external_names: set[str]) -> str | None:
@@ -136,3 +141,17 @@ def _deferred_roots(node: ast.AST) -> list[ast.expr | None]:
 def deferred_nodes(tree: ast.Module) -> set[int]:
     """ids of the nodes that run later, or never, rather than where they are written."""
     return {id(inner) for node in ast.walk(tree) for root in _deferred_roots(node) if root for inner in ast.walk(root)}
+
+
+def is_type_checking(test: ast.expr, origins: dict[str, str], shadowed: set[str]) -> bool:
+    """`TYPE_CHECKING` as imported from `typing` (or `typing_extensions`), alone or as one `and` operand.
+
+    A name in `shadowed` (a parameter or assignment of the enclosing scope) is no longer the imported one.
+    """
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And):
+        return any(is_type_checking(value, origins, shadowed) for value in test.values)
+    if isinstance(test, ast.Name):
+        return test.id not in shadowed and origins.get(test.id, "") in {f"{m}.{TYPE_CHECKING_NAME}" for m in TYPE_CHECKING_MODULES}
+    return (isinstance(test, ast.Attribute) and test.attr == TYPE_CHECKING_NAME
+            and isinstance(test.value, ast.Name) and test.value.id not in shadowed
+            and origins.get(test.value.id, "") in TYPE_CHECKING_MODULES)

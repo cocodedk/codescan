@@ -5,6 +5,7 @@ This module contains tools that show where a codebase's flow can be simplified.
 """
 from typing import Any
 
+from ..import_cycles import find_cycles
 from .base import mcp, q
 
 
@@ -62,3 +63,23 @@ def most_complex_functions(limit: int = 20) -> list[dict[str, Any]]:
         """,
         limit=limit,
     )
+
+
+@mcp.tool()
+def import_cycles(limit: int = 20) -> list[dict[str, Any]]:
+    """
+    List the cycles of project files that import each other (module imports that loop back).
+
+    Only imports of files in the scanned project count; imports under `if TYPE_CHECKING:` do not, and a file
+    importing itself is not a cycle. Cycles longer than 8 files are not searched.
+
+    Args:
+        limit: Maximum number of cycles to return (default 20).
+
+    Returns:
+        Rows of files (the file paths in import order, starting at the alphabetically smallest) and length,
+        shortest cycles first.
+    """
+    pairs = q("MATCH (a:File)-[:IMPORTS_MODULE]->(b:File) RETURN DISTINCT a.path AS source, b.path AS target")
+    return [{"files": files, "length": len(files)} for files in
+            find_cycles(((row["source"], row["target"]) for row in pairs), limit)]
