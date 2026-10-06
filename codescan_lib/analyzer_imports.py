@@ -8,7 +8,7 @@ from .utils import is_stdlib_module
 
 
 class ImportsMixin(ast.NodeVisitor):
-    """Visits imports: remembers standard-library names and records imports made by tests."""
+    """Visits imports: sorts imported names into outside code and project modules, and records test imports."""
 
     file_path: str
     batch: GraphBatch
@@ -16,23 +16,44 @@ class ImportsMixin(ast.NodeVisitor):
     is_test_file: bool
     current_function: str | None
     current_function_line: int
-    stdlib_names: set[str]
+    external_names: set[str]  # names bound to the standard library or a third-party package
+    import_bindings: dict[str, str]  # names bound to project code -> the dotted name they stand for
+    project_roots: set[str]
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
-            if is_stdlib_module(alias.name):
-                self.stdlib_names.add(alias.asname or alias.name.split(".")[0])
+            top = alias.name.split(".")[0]
+            self._bind(alias.asname or top, alias.name if alias.asname else top, top, relative=False)
             self._record_import(alias.name, alias.asname or alias.name, None, alias.name)
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = "." * node.level + (node.module or "")
+        package = self._absolute_module(node)
         for alias in node.names:
-            if node.level == 0 and node.module and is_stdlib_module(node.module):
-                self.stdlib_names.add(alias.asname or alias.name)
+            if alias.name != "*":
+                top = (node.module or "").split(".")[0]
+                self._bind(alias.asname or alias.name, f"{package}.{alias.name}".lstrip("."), top, node.level > 0)
             full_import = f"{module}.{alias.name}" if module else alias.name
             self._record_import(alias.name, alias.asname or alias.name, module or None, full_import)
         self.generic_visit(node)
+
+    def _absolute_module(self, node: ast.ImportFrom) -> str:
+        """Dotted name of the module a `from` import reads, relative imports resolved against this file."""
+        if node.level == 0:
+            return node.module or ""
+        parts = self.file_path.replace("\\", "/").split("/")[:-1]
+        parts = parts[: max(len(parts) - node.level + 1, 0)]
+        return ".".join([*parts, *([node.module] if node.module else [])])
+
+    def _bind(self, name: str, full_name: str, top: str, relative: bool) -> None:
+        """Sort an imported name: standard-library and third-party names are skipped by calls."""
+        if not relative and (is_stdlib_module(top) or top not in self.project_roots):
+            self.external_names.add(name)
+            self.import_bindings.pop(name, None)
+        else:
+            self.external_names.discard(name)
+            self.import_bindings[name] = full_name
 
     def _record_import(self, name: str, alias: str, module: str | None, full_name: str) -> None:
         """Track an import in a test file, to relate the test to the code it imports."""

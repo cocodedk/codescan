@@ -64,7 +64,7 @@ def test_should_attribute_calls_after_a_nested_function_to_the_outer_one(session
 @pytest.mark.parametrize("order", [["caller.py", "lib.py"], ["lib.py", "caller.py"]])
 def test_should_resolve_method_calls_in_any_file_order(session, tmp_path, order):
     files = {
-        "caller.py": "def use(g):\n    g.hello()\n",
+        "caller.py": "def use():\n    g = Greeter()\n    g.hello()\n",
         "lib.py": "class Greeter:\n    def hello(self): pass\n",
     }
     scan(session, tmp_path, files, order)
@@ -215,3 +215,229 @@ def test_should_index_the_lookups_a_scan_makes(session, tmp_path):
     }
     assert {(("Function",), ("name", "file")), (("Class",), ("name", "file")), (("Constant",), ("name", "file")),
             (("File",), ("path",)), (("ReferenceFunction",), ("name",))} <= indexed
+
+
+RUNNER = "class Runner:\n    def run(self): pass\n"
+
+
+def test_should_leave_calls_on_a_parameter_unresolved(session, tmp_path):
+    scan(session, tmp_path, {"m.py": RUNNER + 'def fetch(session):\n    session.run("x")\n'})
+    assert ("fetch", "run") in unresolved_calls(session)
+
+
+def test_should_not_resolve_calls_on_a_parameter_to_a_method(session, tmp_path):
+    scan(session, tmp_path, {"m.py": RUNNER + 'def fetch(session):\n    session.run("x")\n'})
+    assert ("fetch", "Runner.run") not in resolved_calls(session)
+
+
+@pytest.mark.parametrize("source", [
+    "import requests\ndef f(u):\n    return requests.get(u)\n",
+    "from neo4j import GraphDatabase\ndef f(u):\n    return GraphDatabase.driver(u)\n",
+    "import requests as rq\ndef f(u):\n    return rq.adapters.HTTPAdapter(u)\n",
+])
+def test_should_record_no_call_for_third_party_receivers(session, tmp_path, source):
+    scan(session, tmp_path, {"m.py": source})
+    assert (resolved_calls(session), unresolved_calls(session)) == (set(), set())
+
+
+def test_should_keep_calls_on_project_imports(session, tmp_path):
+    files = {"pkg/__init__.py": "", "pkg/lib.py": "def go(): pass\n", "m.py": "from pkg import lib\ndef f():\n    lib.go()\n"}
+    scan(session, tmp_path, files)
+    assert ("f", "go") in resolved_calls(session)
+
+
+def test_should_resolve_calls_on_a_local_instance(session, tmp_path):
+    scan(session, tmp_path, {"m.py": RUNNER + "def f():\n    x = Runner()\n    x.run()\n"})
+    assert ("f", "Runner.run") in resolved_calls(session)
+
+
+def test_should_resolve_calls_on_a_class(session, tmp_path):
+    scan(session, tmp_path, {"m.py": RUNNER + "def f():\n    Runner.run()\n"})
+    assert ("f", "Runner.run") in resolved_calls(session)
+
+
+def test_should_not_resolve_calls_on_an_instance_bound_in_another_function(session, tmp_path):
+    source = RUNNER + "def a():\n    x = Runner()\ndef b(x):\n    x.run()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("b", "run") in unresolved_calls(session)
+
+
+@pytest.mark.parametrize("imports", ["import pkg.utils as utils", "from pkg import utils"])
+def test_should_resolve_calls_on_a_project_module_alias(session, tmp_path, imports):
+    files = {"pkg/__init__.py": "", "pkg/utils.py": "def helper(): pass\n", "m.py": imports + "\ndef f():\n    utils.helper()\n"}
+    scan(session, tmp_path, files)
+    assert ("f", "helper") in resolved_calls(session)
+
+
+def test_should_resolve_calls_on_a_dotted_project_module(session, tmp_path):
+    files = {"pkg/__init__.py": "", "pkg/utils.py": "def helper(): pass\n", "m.py": "import pkg.utils\ndef f():\n    pkg.utils.helper()\n"}
+    scan(session, tmp_path, files)
+    assert ("f", "helper") in resolved_calls(session)
+
+
+def test_should_not_resolve_module_calls_to_another_modules_function(session, tmp_path):
+    files = {"pkg/__init__.py": "", "pkg/utils.py": "def other(): pass\n", "pkg/more.py": "def helper(): pass\n",
+             "m.py": "from pkg import utils\ndef f():\n    utils.helper()\n"}
+    scan(session, tmp_path, files)
+    assert ("f", "helper") in unresolved_calls(session)
+
+
+def test_should_link_each_nested_helper_call_to_its_own_parents_helper(session, tmp_path):
+    source = (
+        "def outer1():\n    def helper(): pass\n    helper()\n"
+        "def outer2():\n    def helper(): pass\n    helper()\n"
+    )
+    scan(session, tmp_path, {"m.py": source})
+    edges = rows(session, """
+        MATCH (a:Function)-[:CALLS]->(b:Function {name: 'helper'}) RETURN a.name, b.line""")
+    assert edges == {("outer1", 2), ("outer2", 5)}
+
+
+def test_should_resolve_a_nested_call_from_a_sibling_to_the_enclosing_functions_helper(session, tmp_path):
+    source = "def outer():\n    def helper(): pass\n    def inner():\n        helper()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("inner", "helper") in resolved_calls(session)
+
+
+def test_should_prefer_the_module_level_function_over_a_nested_one_for_outside_calls(session, tmp_path):
+    source = "def helper(): pass\ndef outer():\n    def helper(): pass\ndef third():\n    helper()\n"
+    scan(session, tmp_path, {"m.py": source})
+    edges = rows(session, "MATCH (:Function {name: 'third'})-[:CALLS]->(b:Function) RETURN b.line")
+    assert edges == {(1,)}
+
+
+def test_should_not_link_outside_calls_to_a_function_nested_elsewhere(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def outer():\n    def helper(): pass\ndef third():\n    helper()\n"})
+    assert ("third", "helper") in unresolved_calls(session)
+
+
+def test_should_keep_every_module_level_definition_as_a_target(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def f(a): pass\ndef f(a, b=1): pass\ndef g():\n    f(1)\n"})
+    edges = rows(session, "MATCH (:Function {name: 'g'})-[:CALLS]->(b:Function) RETURN b.line")
+    assert edges == {(1,), (2,)}
+
+
+@pytest.mark.parametrize(("source", "kind"), [
+    ("def helper(): pass\ndef f():\n    helper()\n", "bare"),
+    ("class A:\n    def go(self):\n        self.run()\n    def run(self): pass\n", "self"),
+    (RUNNER + "def f():\n    x = Runner()\n    x.run()\n", "attr"),
+])
+def test_should_keep_the_call_kind_on_resolved_edges(session, tmp_path, source, kind):
+    scan(session, tmp_path, {"m.py": source})
+    assert rows(session, "MATCH (:Function)-[r:CALLS]->(b:Function) WHERE b.is_reference = false "
+                         "RETURN r.kind") == {(kind,)}
+
+
+def test_should_resolve_calls_on_a_relatively_imported_module(session, tmp_path):
+    files = {"pkg/__init__.py": "", "pkg/utils.py": "def helper(): pass\n",
+             "pkg/m.py": "from . import utils\ndef f():\n    utils.helper()\n"}
+    scan(session, tmp_path, files)
+    assert ("f", "helper") in resolved_calls(session)
+
+
+def test_should_keep_an_unresolved_call_on_the_same_line_as_a_resolved_one(session, tmp_path):
+    scan(session, tmp_path, {"m.py": RUNNER + "def f(session):\n    Runner.run(); session.run()\n"})
+    assert (("f", "Runner.run") in resolved_calls(session), ("f", "run") in unresolved_calls(session)) == (True, True)
+
+
+def test_should_not_resolve_calls_on_a_parameter_named_like_a_module(session, tmp_path):
+    scan(session, tmp_path, {"utils.py": "def helper(): pass\n", "m.py": "def f(utils):\n    utils.helper()\n"})
+    assert ("f", "helper") in unresolved_calls(session)
+
+
+def test_should_resolve_a_class_call_only_in_the_imported_module(session, tmp_path):
+    files = {"b.py": "class Runner: pass\n", "a.py": RUNNER, "m.py": "from b import Runner\ndef f():\n    Runner.run()\n"}
+    scan(session, tmp_path, files)
+    assert ("f", "run") in unresolved_calls(session)
+
+
+def test_should_keep_a_function_local_import_inside_that_function(session, tmp_path):
+    source = "def first():\n    import requests as service\ndef second(service):\n    service.get()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("second", "get") in unresolved_calls(session)
+
+
+def test_should_resolve_an_instance_built_by_a_qualified_class(session, tmp_path):
+    files = {"models.py": RUNNER, "m.py": RUNNER + "import models\ndef f():\n    x = models.Runner()\n    x.run()\n"}
+    scan(session, tmp_path, files)
+    assert rows(session, "MATCH (:Function {name: 'f'})-[:CALLS]->(b:Function {is_reference: false}) RETURN b.file") == {("models.py",)}
+
+
+def test_should_resolve_an_instance_built_by_an_aliased_import(session, tmp_path):
+    files = {"models.py": RUNNER, "m.py": "from models import Runner as R\ndef f():\n    x = R()\n    x.run()\n"}
+    scan(session, tmp_path, files)
+    assert ("f", "Runner.run") in resolved_calls(session)
+
+
+@pytest.mark.parametrize("rebinding", [
+    "x, = other", "x += other", "for x in other: pass", "with other as x: pass", "(x := other)", "del x",
+])
+def test_should_forget_an_instance_when_its_name_is_rebound(session, tmp_path, rebinding):
+    source = RUNNER + f"def f(other):\n    x = Runner()\n    {rebinding}\n    x.run()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("f", "Runner.run") not in resolved_calls(session)
+
+
+def test_should_leave_a_call_unresolved_when_its_name_is_assigned_twice(session, tmp_path):
+    source = ("class A:\n    def run(self): pass\nclass B:\n    def run(self): pass\n"
+              "def f():\n    x = A()\n    x = B(x.run())\n")
+    scan(session, tmp_path, {"m.py": source})
+    assert {t for c, t in resolved_calls(session) if c == "f"} == set()
+
+
+def test_should_link_an_imported_call_to_every_overload_in_the_other_file(session, tmp_path):
+    files = {"lib.py": "def f(a): pass\ndef f(a, b=1): pass\n", "m.py": "from lib import f\ndef g():\n    f(1)\n"}
+    scan(session, tmp_path, files)
+    assert rows(session, "MATCH (:Function {name: 'g'})-[:CALLS]->(b:Function) RETURN b.line") == {(1,), (2,)}
+
+
+R_RUN = "class R:\n    def run(self): pass\n"
+
+
+@pytest.mark.parametrize("source", [
+    "import lib\ndef f(lib):\n    lib.run()\n",
+    "import lib\ndef f(other):\n    lib = other\n    lib.run()\n",
+    "import lib\ndef f(lib):\n    def inner():\n        lib.run()\n",
+])
+def test_should_not_resolve_a_module_call_when_the_function_rebinds_the_name(session, tmp_path, source):
+    scan(session, tmp_path, {"lib.py": "def run(): pass\n", "m.py": source})
+    assert not {c for c, t in resolved_calls(session) if t == "run"}
+
+
+@pytest.mark.parametrize("body", [
+    "def f(other):\n    x = R()\n    match other:\n        case x:\n            x.run()\n",
+    "def f(x):\n    class Inner:\n        x = R()\n    x.run()\n",
+    "def f():\n    x = R()\n    (x := x.run())\n",
+    "def f():\n    x = R(); x.run()\n",
+])
+def test_should_leave_calls_unresolved_unless_the_instance_is_the_names_only_binding(session, tmp_path, body):
+    scan(session, tmp_path, {"m.py": R_RUN + body})
+    assert (("f", "R.run") in resolved_calls(session), ("f", "run") in unresolved_calls(session)) == (False, True)
+
+
+def test_should_not_resolve_a_call_in_a_comprehension_that_rebinds_the_instance_name(session, tmp_path):
+    scan(session, tmp_path, {"m.py": R_RUN + "def f(xs):\n    x = R()\n    [x.run() for x in xs]\n    x.run()\n"})
+    assert ("f", "R.run") not in resolved_calls(session)
+
+
+def test_should_not_count_an_annotation_without_a_value_as_a_binding(session, tmp_path):
+    scan(session, tmp_path, {"m.py": R_RUN + "def f():\n    x = R()\n    x: object\n    x.run()\n"})
+    assert ("f", "R.run") in resolved_calls(session)
+
+
+def test_should_not_resolve_a_closures_import_receiver_rebound_later_in_the_enclosing_function(session, tmp_path):
+    source = "import a as lib\ndef outer():\n    def inner():\n        lib.run()\n    import b as lib\n    inner()\n"
+    scan(session, tmp_path, {"a.py": "def run(): pass\n", "b.py": "def run(): pass\n", "m.py": source})
+    assert not {c for c, t in resolved_calls(session) if c == "inner"}
+
+
+def test_should_resolve_a_module_alias_call_only_to_functions_of_that_modules_file(session, tmp_path):
+    files = {
+        "pkg/__init__.py": "class utils:\n    @staticmethod\n    def helper(): pass\n",
+        "pkg/utils.py": "def helper(): pass\n",
+        "other.py": "class More:\n    def helper(self): pass\n",
+        "m.py": "import pkg.utils as utils\ndef f():\n    utils.helper()\n",
+    }
+    scan(session, tmp_path, files)
+    edges = rows(session, "MATCH (:Function {name: 'f'})-[:CALLS]->(b:Function {is_reference: false}) RETURN b.name, b.file")
+    assert edges == {("helper", "pkg/utils.py")}

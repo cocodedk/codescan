@@ -11,6 +11,15 @@ def is_stdlib_module(module_name: str) -> bool:
     """Check if a module is part of the Python standard library."""
     return module_name.split(".")[0] in sys.stdlib_module_names
 
+def project_roots(base_dir: str) -> set[str]:
+    """Names a project import can start with: the scanned directory's top-level packages and modules."""
+    return {
+        entry.name[:-3] if entry.is_file() else entry.name
+        for entry in os.scandir(base_dir)
+        if entry.is_dir() or entry.name.endswith(".py")
+    }
+
+
 def node_span(node: ast.AST) -> tuple[int, int, int]:
     """Return (first line, last line, length in lines) of an AST node."""
     line = getattr(node, "lineno", -1)

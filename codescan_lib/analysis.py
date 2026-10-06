@@ -5,11 +5,17 @@ from typing import Any
 from tqdm import tqdm
 
 from .analyzer import CodeAnalyzer
-from .constants import COLOR_FILE_CONTAINS, IGNORE_DIRS
-from .db_operations import ensure_indexes
+from .constants import IGNORE_DIRS
+from .db_operations import ensure_indexes, link_file_contents
 from .relationships import count_unresolved, link_tests, resolve_calls
 from .stats_collector import StatsCollector
-from .utils import get_relative_path, is_example_file, is_project_file, is_test_file
+from .utils import (
+    get_relative_path,
+    is_example_file,
+    is_project_file,
+    is_test_file,
+    project_roots,
+)
 
 
 def analyze_file(
@@ -91,6 +97,7 @@ def analyze_file(
                 is_test_file=is_test_flag,
                 stats_collector=stats,
                 skip_dunder_methods=skip_dunder_methods,
+                project_roots=project_roots(base_dir),
             )
             analyzer.visit(tree)
             analyzer.flush()
@@ -100,42 +107,7 @@ def analyze_file(
                 if is_test_flag:
                     analyzer.process_test_relationships(custom_patterns)
 
-            # After analyzing the file, create relationships between the File node and its contents
-            # Link File to its Classes
-            session.run(
-                """
-                MATCH (f:File {path: $path})
-                MATCH (c:Class {file: $path})
-                MERGE (f)-[:CONTAINS {color: $color}]->(c)
-                """,
-                path=rel_path,
-                color=COLOR_FILE_CONTAINS,
-            )
-
-            # Link File to its Functions (that aren't in classes)
-            session.run(
-                """
-                MATCH (f:File {path: $path})
-                MATCH (func:Function {file: $path})
-                WHERE func.is_reference = false AND NOT EXISTS {
-                  MATCH (c:Class)-[:CONTAINS]->(func)
-                }
-                MERGE (f)-[:CONTAINS {color: $color}]->(func)
-                """,
-                path=rel_path,
-                color=COLOR_FILE_CONTAINS,
-            )
-
-            # Link File to its Constants (that aren't in classes or functions)
-            session.run(
-                """
-                MATCH (f:File {path: $path})
-                MATCH (const:Constant {file: $path, scope: 'module'})
-                MERGE (f)-[:CONTAINS {color: $color}]->(const)
-                """,
-                path=rel_path,
-                color=COLOR_FILE_CONTAINS,
-            )
+            link_file_contents(session, rel_path)
 
     except SyntaxError as e:
         stats.register_file_error(rel_path, "SyntaxError", str(e))
