@@ -78,3 +78,45 @@ def scan_function(node: ast.FunctionDef | ast.AsyncFunctionDef) -> BindingScan:
     for statement in node.body:
         scan.visit(statement)
     return scan
+
+
+class ModuleScan(BindingScan):
+    """Binding sites of a module's own scope: a class body binds only the class's name here.
+
+    Decorators, bases, defaults and comprehensions count (a walrus in them binds in the module);
+    `defs` counts the `def` and `class` statements among the sites.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.defs: Counter[str] = Counter()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        self.defs[node.name] += 1
+        super().visit_FunctionDef(node)
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.defs[node.name] += 1
+        self.names[node.name] += 1
+        for outer in (*node.decorator_list, *node.bases, *node.keywords):
+            self.visit(outer)
+
+    def sites(self, name: str) -> int:
+        return self.names[name] + self.imports[name]
+
+    def rebound(self) -> set[str]:
+        """Names bound more than once, imports included: which binding a call sees is undecided."""
+        return {name for name in self.names.keys() | self.imports.keys() if self.sites(name) > 1}
+
+    def clean_exports(self) -> set[str]:
+        """Names bound exactly once, by a `def` or `class`: what another module can import with certainty."""
+        return {name for name in self.defs if self.sites(name) == 1}
+
+
+def scan_module(tree: ast.Module) -> ModuleScan:
+    scan = ModuleScan()
+    for statement in tree.body:
+        scan.visit(statement)
+    return scan

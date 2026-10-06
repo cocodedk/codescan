@@ -61,8 +61,11 @@ def receiver_hints(
 
     `Foo.run()` and `x.run()` after `x = Foo()` name a class; `utils.run()` after `import pkg.utils as utils`
     names the class "pkg.utils" or the module "pkg.utils". A parameter, an attribute, a call result or a
-    name the function rebinds names none. `instances` maps a name to its class and the line it was bound on.
+    name the function rebinds names none. A bare `compute()` after
+    `from pkg.a import compute` names the dotted name "pkg.a.compute" in the module slot. `instances` maps a name to its class and the line it was bound on.
     """
+    if isinstance(func, ast.Name):
+        return "", ("" if func.id in blocked else imports.get(func.id, ""))
     if not isinstance(func, ast.Attribute):
         return "", ""
     receiver = func.value

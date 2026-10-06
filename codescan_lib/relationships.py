@@ -1,12 +1,19 @@
-"""Graph passes that need the whole project: call resolution and test linking.
+"""Graph pass that needs the whole project: call resolution.
 
-They run after every file is analyzed, so the result does not depend on the
+It runs after every file is analyzed, so the result does not depend on the
 order files were visited in.
 """
 from typing import Any
 
-from .call_targets import NOT_NESTED, Definition, Position, choose_targets, module_of
-from .constants import COLOR_CALLS, COLOR_TESTS, TEST_FUNCTION_PREFIXES
+from .call_targets import (
+    NOT_NESTED,
+    Definition,
+    Position,
+    build_exporters,
+    choose_targets,
+    module_of,
+)
+from .constants import COLOR_CALLS
 
 
 def resolve_calls(session: Any) -> None:
@@ -21,7 +28,10 @@ def resolve_calls(session: Any) -> None:
         index.setdefault(row["name"].rpartition(".")[2], []).append(definition)
         by_position[(definition.file, definition.line)] = definition
 
-    modules = {module_of(row["path"]) for row in session.run("MATCH (f:File) RETURN f.path AS path")}
+    files = [(row["path"], row["exports"]) for row in session.run(
+        "MATCH (f:File) RETURN f.path AS path, coalesce(f.exports, []) AS exports")]
+    modules = {module_of(path) for path, _ in files}
+    exporters = build_exporters(files)
 
     resolved = []
     for row in session.run("""
@@ -34,7 +44,7 @@ def resolve_calls(session: Any) -> None:
         # A receiver that is a project module is never read as a class of the same name
         recv_class = "" if row["recv_module"] and row["recv_module"] in modules else row["recv_class"]
         targets = choose_targets(caller, row["callee"], index.get(row["callee"], []), by_position,
-                                 row["kind"], recv_class, row["recv_module"])
+                                 row["kind"], recv_class, row["recv_module"], exporters)
         resolved += [{**row.data(), "target": t.name, "target_file": t.file, "target_line": t.line} for t in targets]
 
     if resolved:
@@ -57,39 +67,3 @@ def resolve_calls(session: Any) -> None:
 def count_unresolved(session: Any) -> int:
     """Number of callee names no definition could be found for."""
     return int(session.run("MATCH (ref:ReferenceFunction) RETURN count(ref) AS n").single()["n"])
-
-
-def link_tests(session: Any, function_prefixes: list[str] | None = None) -> None:
-    """Connect test functions to the production functions they exercise."""
-    for prefix in function_prefixes or TEST_FUNCTION_PREFIXES:
-        session.run(
-            """
-            MATCH (test:TestFunction)
-            WHERE test.name STARTS WITH $prefix
-            WITH test, substring(test.name, $prefix_len) AS tested_name
-            MATCH (prod:Function)
-            WHERE NOT prod:TestFunction AND prod.is_reference = false
-              AND (prod.name = tested_name OR prod.name ENDS WITH ('.' + tested_name))
-            MERGE (test)-[:TESTS {method: 'naming_pattern', color: $edge_color}]->(prod)
-            """,
-            prefix=prefix,
-            prefix_len=len(prefix),
-            edge_color=COLOR_TESTS,
-        )
-    session.run(
-        """
-        MATCH (test:TestFunction)-[:IMPORTS]->(i:Import)
-        MATCH (prod:Function)
-        WHERE NOT prod:TestFunction AND prod.is_reference = false AND prod.name = i.name
-        MERGE (test)-[:TESTS {method: 'import', color: $edge_color}]->(prod)
-        """,
-        edge_color=COLOR_TESTS,
-    )
-    session.run(
-        """
-        MATCH (test:TestFunction)-[:CALLS]->(prod:Function)
-        WHERE NOT prod:TestFunction AND prod.is_reference = false
-        MERGE (test)-[:TESTS {method: 'call', color: $edge_color}]->(prod)
-        """,
-        edge_color=COLOR_TESTS,
-    )
