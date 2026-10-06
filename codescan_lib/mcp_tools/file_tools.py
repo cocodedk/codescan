@@ -5,7 +5,7 @@ This module contains tools for working with files and their contents.
 """
 from typing import Any
 
-from .base import driver, mcp, q
+from .base import mcp, q
 
 
 @mcp.tool()
@@ -20,9 +20,7 @@ def list_files(random_string: str):
            CASE WHEN f:ExampleFile THEN true ELSE false END AS is_example_file
     ORDER BY file
     """
-    with driver.session() as session:
-        results = session.run(query).data()
-        return results
+    return q(query)
 
 @mcp.tool()
 def file_contents(file: str):
@@ -46,14 +44,9 @@ def file_contents(file: str):
     RETURN const.name AS name, 'constant' AS type, const.line AS line, const.end_line AS end_line
     ORDER BY line
     """
-    with driver.session() as session:
-        results = session.run(query, file=file).data()
+    results = q(query, file=file)
 
-        # Format the results for better display
-        return {
-            "file": file,
-            "contents": results
-        }
+    return {"file": file, "contents": results}
 
 @mcp.tool()
 def list_functions(file: str) -> list[dict[str, Any]]:
