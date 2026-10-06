@@ -82,6 +82,7 @@ def analyze_file(
             is_test: $is_test,
             is_example: $is_example
         }})
+        SET f.import_refs = []
         """,
         path=rel_path,
         type=file_type,

@@ -1,7 +1,8 @@
 """Import tracking for CodeAnalyzer."""
 import ast
 
-from .constants import COLOR_IMPORTS, TYPE_CHECKING_NAME
+from .bindings import ModuleScan
+from .constants import COLOR_IMPORTS, TYPE_CHECKING_MODULES, TYPE_CHECKING_NAME
 from .graph_batch import LINKS, GraphBatch
 from .stats_collector import StatsCollector
 from .utils import is_stdlib_module
@@ -19,6 +20,7 @@ class ImportsMixin(ast.NodeVisitor):
     external_names: set[str]  # names bound to the standard library or a third-party package
     import_bindings: dict[str, str]  # names bound to project code -> the dotted name they stand for
     project_roots: set[str]
+    origins: dict[str, str]  # where each imported name comes from (see call_names.import_origins)
     type_checking_depth: int = 0  # above 0 while inside the body of an `if TYPE_CHECKING:`
 
     def visit_Import(self, node: ast.Import) -> None:
@@ -26,7 +28,7 @@ class ImportsMixin(ast.NodeVisitor):
             top = alias.name.split(".")[0]
             self._bind(alias.asname or top, alias.name if alias.asname else top, top, relative=False)
             self._record_import(alias.name, alias.asname or alias.name, None, alias.name)
-            self._record_module_import(alias.name, node.lineno, relative=False)
+        self._record_module_imports(node)
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
@@ -38,37 +40,60 @@ class ImportsMixin(ast.NodeVisitor):
                 self._bind(alias.asname or alias.name, f"{package}.{alias.name}".lstrip("."), top, node.level > 0)
             full_import = f"{module}.{alias.name}" if module else alias.name
             self._record_import(alias.name, alias.asname or alias.name, module or None, full_import)
-            if alias.name != "*":
-                self._record_module_import(f"{package}.{alias.name}".lstrip("."), node.lineno, node.level > 0)
+        self._record_module_imports(node)
         self.generic_visit(node)
 
     def visit_If(self, node: ast.If) -> None:
-        """Imports under `if TYPE_CHECKING:` never run, so they add no module import."""
-        if not _is_type_checking(node.test):
-            self.generic_visit(node)
+        self._walk_if(node, self)
+
+    def _walk_if(self, node: ast.If, visitor: ast.NodeVisitor) -> None:
+        """Visit an `if` with `visitor`; imports under `if TYPE_CHECKING:` never run, so they add no module import."""
+        if not _is_type_checking(node.test, self.origins):
+            visitor.generic_visit(node)
             return
-        self.visit(node.test)
+        visitor.visit(node.test)
         self.type_checking_depth += 1
         try:
             for statement in node.body:
-                self.visit(statement)
+                visitor.visit(statement)
         finally:
             self.type_checking_depth -= 1
         for statement in node.orelse:
-            self.visit(statement)
+            visitor.visit(statement)
 
-    def _record_module_import(self, dotted: str, line: int, relative: bool) -> None:
-        """Queue `line: dotted` on the File node; finalize_graph() turns it into an IMPORTS_MODULE edge.
+    def record_skipped_imports(self, node: ast.AST) -> None:
+        """A skipped function (a dunder method) leaves no Function node, but its imports still make module imports."""
+        _SkippedImports(self).visit(node)
 
-        Standard-library names are skipped here, the rest is matched to project files once every file is known.
-        """
-        if self.type_checking_depth or (not relative and is_stdlib_module(dotted)):
-            return
+    def record_exports(self, scan: ModuleScan) -> None:
+        """Queue what other modules can learn about this file's names: `exports` (see call_targets.exported_functions)
+        and `bound`, every name the module binds (a package binding `x` shadows its submodule `x`)."""
         self.batch.add(
-            LINKS, "UNWIND $rows AS row MATCH (f:File {path: $file}) "
-            "SET f.import_refs = coalesce(f.import_refs, []) + row.ref",
-            ref=f"{line}:{dotted}",
+            LINKS, "UNWIND $rows AS row MATCH (f:File {path: $file}) SET f.exports = row.exports, f.bound = row.bound",
+            exports=sorted(scan.clean_exports()), bound=sorted(scan.bound_names()),
         )
+
+    def _record_module_imports(self, node: ast.Import | ast.ImportFrom) -> None:
+        """Queue each module this import reads on the File node (`line:module`, or `line:package:name` for a
+        `from` import); finalize_graph() turns them into IMPORTS_MODULE edges once every file is known.
+
+        Standard-library imports and imports under `if TYPE_CHECKING:` are skipped here.
+        """
+        if self.type_checking_depth:
+            return
+        if isinstance(node, ast.ImportFrom):
+            package = self._absolute_module(node)
+            if node.level == 0 and is_stdlib_module(package):
+                return
+            refs = [package if alias.name == "*" else f"{package}:{alias.name}" for alias in node.names]
+        else:
+            refs = [alias.name for alias in node.names if not is_stdlib_module(alias.name)]
+        for ref in refs:
+            self.batch.add(
+                LINKS, "UNWIND $rows AS row MATCH (f:File {path: $file}) "
+                "SET f.import_refs = coalesce(f.import_refs, []) + row.ref",
+                ref=f"{node.lineno}:{ref}",
+            )
 
     def _absolute_module(self, node: ast.ImportFrom) -> str:
         """Dotted name of the module a `from` import reads, relative imports resolved against this file."""
@@ -105,7 +130,26 @@ class ImportsMixin(ast.NodeVisitor):
         )
 
 
-def _is_type_checking(test: ast.expr) -> bool:
-    """`TYPE_CHECKING` or `typing.TYPE_CHECKING` (any module alias) as the whole condition."""
-    return (isinstance(test, ast.Name) and test.id == TYPE_CHECKING_NAME) or (
-        isinstance(test, ast.Attribute) and test.attr == TYPE_CHECKING_NAME)
+class _SkippedImports(ast.NodeVisitor):
+    """Finds the imports in a function the analyzer does not visit."""
+
+    def __init__(self, owner: ImportsMixin) -> None:
+        self.owner = owner
+
+    def visit_Import(self, node: ast.Import | ast.ImportFrom) -> None:
+        self.owner._record_module_imports(node)
+
+    visit_ImportFrom = visit_Import
+
+    def visit_If(self, node: ast.If) -> None:
+        self.owner._walk_if(node, self)
+
+
+def _is_type_checking(test: ast.expr, origins: dict[str, str]) -> bool:
+    """`TYPE_CHECKING` as imported from `typing` (or `typing_extensions`), alone or as one `and` operand."""
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And):
+        return any(_is_type_checking(value, origins) for value in test.values)
+    if isinstance(test, ast.Name):
+        return origins.get(test.id, "") in {f"{m}.{TYPE_CHECKING_NAME}" for m in TYPE_CHECKING_MODULES}
+    return (isinstance(test, ast.Attribute) and test.attr == TYPE_CHECKING_NAME
+            and isinstance(test.value, ast.Name) and origins.get(test.value.id, "") in TYPE_CHECKING_MODULES)

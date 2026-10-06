@@ -123,6 +123,10 @@ class ModuleScan(BindingScan):
         return {name for name in self.names.keys() | self.imports.keys()
                 if self.names[name] > self.defs[name] or (self.sites(name) > 1 and self.sites(name) > self.defs[name])}
 
+    def bound_names(self) -> set[str]:
+        """Every name the module binds, by any site, imports included."""
+        return set(self.names) | set(self.imports)
+
     def clean_exports(self) -> set[str]:
         """Names bound exactly once, by a `def` or `class`: what another module can import with certainty."""
         return {name for name in self.defs if self.sites(name) == 1}

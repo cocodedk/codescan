@@ -96,10 +96,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self.module_rebound = scan.untrusted()
         self.blocked_names = set(self.module_rebound)  # module-level calls trust what a function would
         self.module_unstable, self.deferred, self.origins = scan.unstable(), deferred_nodes(node), import_origins(node)
-        self.batch.add(  # which names another module can import with certainty (see call_targets.exported_functions)
-            LINKS, "UNWIND $rows AS row MATCH (f:File {path: $file}) SET f.exports = row.exports",
-            exports=sorted(scan.clean_exports()),
-        )
+        self.record_exports(scan)
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -138,6 +135,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         name = node.name
         if self.skip_dunder_methods and name.startswith("__") and name.endswith("__"):
+            self.record_skipped_imports(node)
             return
 
         line, end_line, length = node_span(node)
