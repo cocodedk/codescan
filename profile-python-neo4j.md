@@ -27,7 +27,3 @@ There is no build step. The build is the suite, run on the pull request's branch
     README.md
 
 A library and MCP server: the README says how to scan a project and connect the tools.
-
-## account
-
-    REPLACE-WITH-ACCOUNT-NAME
