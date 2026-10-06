@@ -103,6 +103,17 @@ ruff check . && pytest      # Full smoke check (used in CI and pre-commit)
 
 ---
 
+## Autonomous builds (graph-loop)
+
+graph-loop builds features from the specs in `docs/lean/`, one per pull request, with the profile in
+`profile-python-neo4j.md` (its suite is `bash scripts/gate.sh`). When working as graph-loop's builder:
+
+- The spec is the settled brainstorm and plan: skip `superpowers:brainstorming` and
+  `superpowers:writing-plans`, and never stop to ask a person. Questions go in the pull request.
+- The other rules in this file still apply: tests first, the 200-line limit, constants, layer rules.
+
+---
+
 ## Starting a New Session
 
 1. Read this file
