@@ -1,6 +1,9 @@
 """Call recording for CodeAnalyzer."""
 import ast
+from collections.abc import Iterator
+from contextlib import contextmanager
 
+from .bindings import scan_function
 from .call_names import call_kind, callee_name, dotted_name, receiver_hints
 from .graph_batch import LINKS, GraphBatch
 from .stats_collector import StatsCollector
@@ -16,35 +19,37 @@ class CallsMixin(ast.NodeVisitor):
     current_function_line: int
     external_names: set[str]
     import_bindings: dict[str, str]
-    instances: dict[tuple[str | None, int], dict[str, str]]  # per function: local name -> class it was built from
+    current_scope: str
+    blocked_names: set[str]  # names a function around this call rebinds: never trusted as a receiver
+    sole_bindings: set[str]  # names this function binds exactly once, by something other than an import
+    instances: dict[str, tuple[str, int]]  # this function: local name -> (class it was built from, line)
+
+    @contextmanager
+    def _bindings(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[None]:
+        """Trust only receivers this function (and the ones around it) cannot have rebound."""
+        scan = scan_function(node)
+        saved = (self.blocked_names, self.sole_bindings, self.instances)
+        rebound = {*scan.names, *(name for name, count in scan.imports.items() if count > 1)}
+        self.blocked_names = self.blocked_names | rebound
+        self.sole_bindings = {name for name, count in scan.names.items() if count == 1 and name not in scan.imports}
+        self.instances = {}
+        try:
+            yield
+        finally:
+            self.blocked_names, self.sole_bindings, self.instances = saved
 
     def visit_Assign(self, node: ast.Assign) -> None:
-        super().visit_Assign(node)  # type: ignore[misc]  # reads the value, then the targets
-        self._bind_instances(node.targets, node.value)
-
-    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        super().visit_AnnAssign(node)  # type: ignore[misc]
-        if node.value is not None:
-            self._bind_instances([node.target], node.value)
-
-    def visit_Name(self, node: ast.Name) -> None:
-        """Any other way of binding a name (unpacking, `+=`, `for`, `with`, `:=`, `del`) forgets its class."""
-        if self.current_function and not isinstance(node.ctx, ast.Load):
-            self._local_instances().pop(node.id, None)
-
-    def _local_instances(self) -> dict[str, str]:
-        return self.instances.setdefault((self.current_function, self.current_function_line), {})
-
-    def _bind_instances(self, targets: list[ast.expr], value: ast.expr) -> None:
-        """Remember `x = Foo()` for the current function, with Foo read through the file's imports."""
-        if not self.current_function or not isinstance(value, ast.Call):
+        """Remember `x = Foo()` when it is the function's only binding of `x` (and `x` is a function local)."""
+        super().visit_Assign(node)  # type: ignore[misc]
+        value = node.value
+        if self.current_scope != "function" or not isinstance(value, ast.Call):
             return
         if callee_name(value.func, self.external_names) is None:
             return
-        built = dotted_name(value.func, self.import_bindings)
-        for target in targets:
-            if built and isinstance(target, ast.Name):
-                self._local_instances()[target.id] = built
+        built = dotted_name(value.func, self.import_bindings, self.blocked_names)
+        for target in node.targets:
+            if built and isinstance(target, ast.Name) and target.id in self.sole_bindings:
+                self.instances[target.id] = (built, node.end_lineno or node.lineno)
 
     def visit_Call(self, node: ast.Call) -> None:
         callee = callee_name(node.func, self.external_names)
@@ -58,7 +63,9 @@ class CallsMixin(ast.NodeVisitor):
                 line=line,
                 args=args,
             )
-            recv_class, recv_module = receiver_hints(node.func, self.import_bindings, self._local_instances())
+            recv_class, recv_module = receiver_hints(
+                node.func, self.import_bindings, self.instances, self.blocked_names, line
+            )
             # One placeholder per callee name; resolve_calls() re-points the edge at the real definition
             self.batch.add(
                 LINKS,

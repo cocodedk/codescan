@@ -36,7 +36,9 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self.project_roots: set[str] = project_roots or set()  # top-level packages and modules of the scan
         self.external_names: set[str] = set()  # names this file imported from outside the project
         self.import_bindings: dict[str, str] = {}  # names this file imported from the project -> dotted name
-        self.instances: dict[tuple[str | None, int], dict[str, str]] = {}  # see CallsMixin
+        self.blocked_names: set[str] = set()  # see CallsMixin
+        self.sole_bindings: set[str] = set()
+        self.instances: dict[str, tuple[str, int]] = {}
 
         # Use provided stats collector or create a new one
         self.stats: StatsCollector = (
@@ -137,7 +139,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self._visit_all([*node.decorator_list, node.args])
         if node.returns:
             self.visit(node.returns)
-        with self._scope("function", self.current_class, full_name, line):
+        with self._scope("function", self.current_class, full_name, line), self._bindings(node):
             self._visit_all(node.body)
 
     visit_AsyncFunctionDef = visit_FunctionDef

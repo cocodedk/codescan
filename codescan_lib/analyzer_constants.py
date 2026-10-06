@@ -27,16 +27,12 @@ class ConstantsMixin(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self._record_constants(node, node.targets, node.value)
-        self.visit(node.value)  # the value runs before its targets are bound
-        for target in node.targets:
-            self.visit(target)
+        self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if node.value is not None:
             self._record_constants(node, [node.target], node.value)
-            self.visit(node.value)
-        self.visit(node.target)
-        self.visit(node.annotation)
+        self.generic_visit(node)
 
     def _record_constants(self, node: ast.stmt, targets: list[ast.expr], value: ast.expr) -> None:
         """Store upper-case assignment targets as Constant nodes (never in test files)."""

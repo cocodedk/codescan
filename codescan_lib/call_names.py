@@ -35,14 +35,15 @@ def _root(expr: ast.expr) -> ast.Name | None:
     return expr if isinstance(expr, ast.Name) and expr.id not in SELF_NAMES else None
 
 
-def dotted_name(expr: ast.expr, imports: dict[str, str]) -> str:
+def dotted_name(expr: ast.expr, imports: dict[str, str], blocked: set[str]) -> str:
     """Dotted name `expr` stands for, its first name resolved through the file's project imports.
 
-    An unimported name stands for itself (a class defined in this file), but an attribute chain on one
-    is unknown: "" is returned for it, and for `self`, `cls` and anything that is not a name chain.
+    "" when it is unknown: the first name is `self`, `cls` or rebound in this function (`blocked`),
+    or it is not an import and has attributes after it. A bare unimported name stands for itself
+    (a class defined in this file).
     """
     root = _root(expr)
-    if root is None:
+    if root is None or root.id in blocked:
         return ""
     chain: list[str] = []
     while isinstance(expr, ast.Attribute):
@@ -53,17 +54,21 @@ def dotted_name(expr: ast.expr, imports: dict[str, str]) -> str:
     return "" if chain else root.id
 
 
-def receiver_hints(func: ast.expr, imports: dict[str, str], instances: dict[str, str]) -> tuple[str, str]:
+def receiver_hints(
+    func: ast.expr, imports: dict[str, str], instances: dict[str, tuple[str, int]], blocked: set[str], line: int
+) -> tuple[str, str]:
     """The class and the module an attribute call's receiver may be, "" for each that is unknown.
 
     `Foo.run()` and `x.run()` after `x = Foo()` name a class; `utils.run()` after `import pkg.utils as utils`
-    names the class "pkg.utils" or the module "pkg.utils". A parameter, an attribute or a call result names none.
+    names the class "pkg.utils" or the module "pkg.utils". A parameter, an attribute, a call result or a
+    name the function rebinds names none. `instances` maps a name to its class and the line it was bound on.
     """
     if not isinstance(func, ast.Attribute):
         return "", ""
     receiver = func.value
     if isinstance(receiver, ast.Name) and receiver.id in instances:
-        return instances[receiver.id], ""
+        built, bound_line = instances[receiver.id]
+        return (built, "") if line > bound_line else ("", "")
     root = _root(receiver)
-    name = dotted_name(receiver, imports)
+    name = dotted_name(receiver, imports, blocked)
     return name, name if root and root.id in imports else ""
