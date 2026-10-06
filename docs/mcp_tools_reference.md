@@ -271,3 +271,18 @@ Lists functions whose whole body is one call to another defined function (a laye
   {"name": "a", "file": "src/foo.py", "line": 3, "target": "b", "target_file": "src/foo.py", "callers": 2, "same_arguments": true}
 ]
 ```
+
+---
+
+### 18. `most_complex_functions`
+**Description:**
+Lists the defined, non-test functions with the most branching. `complexity` is 1 plus one for each if/elif, for, while, except handler, match case, conditional expression, comprehension `if`, and extra operand of `and`/`or`, counted in the function's own body (nested functions and classes count for themselves). `max_nesting` is the deepest level of nested if/for/while/try/with/match blocks (0 for a flat body). Ordered by complexity, then nesting, highest first.
+
+**Parameters:** `limit` (int, default 20)
+
+**Sample Output:**
+```json
+[
+  {"name": "parse", "file": "src/foo.py", "line": 10, "length": 42, "complexity": 14, "max_nesting": 4}
+]
+```
