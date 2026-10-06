@@ -6,10 +6,15 @@ The lean loop reads the first indented line under each heading below.
 
     bash scripts/gate.sh
 
-Builds a venv inside the worktree, installs `requirements.txt` and CI's ruff pin, runs `ruff check .`,
-then `pytest` against the Neo4j on `bolt://localhost:7600` (user `neo4j`, password `strongpassword`).
+uv installs the locked dependencies (`uv.lock`) into `.venv` inside the worktree, then runs `ruff check .`
+and `pytest` against the Neo4j on `bolt://localhost:7600` (user `neo4j`, password `strongpassword`).
 That Neo4j must be running: the container `codescan-neo4j-dev` (image `neo4j:5.26.0`, restart policy
-`unless-stopped`). The suite clears its database. The sandbox keeps the network, so pip can download.
+`unless-stopped`). The suite clears its database. The sandbox keeps the network, so uv can download.
+
+## paths_the_gate_needs
+
+The gate box hides the home folder, and uv lives there on this machine. The workspace's
+`gate-paths.json` declares it: `{"read_only": ["<absolute path of the uv binary>"]}`.
 
 ## build_command
 
