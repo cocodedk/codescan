@@ -190,6 +190,7 @@ CodeScan provides various tools for code analysis through the MCP server:
   - `recursive_functions` - List functions that call themselves
   - `classes_with_no_methods` - List classes without any methods
   - `classes_with_most_methods` - List classes with the most methods
+  - `import_cycles` - List cycles of project files that import each other
   - `function_call_arguments` - List arguments used in calls to a specific function
   - `repetitive_constants` - Find constants with identical values used in multiple places
   - `repetitive_constant_names` - Find constants with the same name but potentially different values used in multiple places

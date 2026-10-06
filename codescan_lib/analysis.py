@@ -8,6 +8,7 @@ from .analyzer import CodeAnalyzer
 from .constants import IGNORE_DIRS
 from .coverage_links import link_tests
 from .db_operations import ensure_indexes, link_file_contents
+from .import_edges import resolve_imports
 from .relationships import count_unresolved, resolve_calls
 from .stats_collector import StatsCollector
 from .utils import (
@@ -105,6 +106,7 @@ def analyze_file(
 
             if not defer_relationships:
                 resolve_calls(session)
+                resolve_imports(session)
                 if is_test_flag:
                     analyzer.process_test_relationships(custom_patterns)
 
@@ -175,4 +177,5 @@ def analyze_directory(
 def finalize_graph(session, custom_patterns: dict[str, Any] | None = None) -> None:
     """Resolve calls and link tests across every file analyzed so far."""
     resolve_calls(session)
+    resolve_imports(session)
     link_tests(session, (custom_patterns or {}).get("test_funcs"))

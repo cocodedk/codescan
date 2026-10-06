@@ -286,3 +286,18 @@ Lists the defined, non-test functions with the most branching. `complexity` is 1
   {"name": "parse", "file": "src/foo.py", "line": 10, "length": 42, "complexity": 14, "max_nesting": 4}
 ]
 ```
+
+---
+
+### 19. `import_cycles`
+**Description:**
+Lists cycles of project files that import each other. The scan records `(:File)-[:IMPORTS_MODULE {line}]->(:File)` for each `import` / `from ... import` that resolves to a file in the scanned project (absolute or relative; a package means its `__init__.py`). Standard-library and third-party imports add nothing, nor do imports under `if TYPE_CHECKING:`; imports inside functions count. A file importing itself is not a cycle. Each cycle is reported once, starting at its alphabetically smallest file, shortest first. Cycles longer than 8 files are not searched.
+
+**Parameters:** `limit` (int, default 20)
+
+**Sample Output:**
+```json
+[
+  {"files": ["src/a.py", "src/b.py"], "length": 2}
+]
+```
