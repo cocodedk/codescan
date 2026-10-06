@@ -7,8 +7,8 @@ from .analyzer_calls import CallsMixin
 from .analyzer_constants import ConstantsMixin
 from .analyzer_imports import ImportsMixin
 from .constants import COLOR_CLASS_CONTAINS
+from .coverage_links import link_tests
 from .graph_batch import LINKS, NODES, GraphBatch
-from .relationships import link_tests
 from .stats_collector import StatsCollector
 from .utils import is_example_file, node_span
 

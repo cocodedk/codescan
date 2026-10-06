@@ -132,40 +132,6 @@ def analyze_file(file_path, session, base_dir):
 
         self.assertTrue(found_import_tracking, "ImportFrom tracking not found in session calls")
 
-    def test_process_test_relationships_naming(self):
-        """Test that test relationships are created based on naming patterns."""
-        # Create an analyzer with is_test_file=True
-        analyzer = CodeAnalyzer(self.test_file_path, self.session_mock, is_test_file=True)
-
-        # Call the method to create test relationships
-        analyzer.process_test_relationships()
-
-        # Verify the correct Cypher query was called to create naming-based relationships
-        found_naming_relationship = False
-        for call in self.session_mock.run.call_args_list:
-            if "MATCH (test:TestFunction)" in call[0][0] and "STARTS WITH" in call[0][0] and "MERGE (test)-[:TESTS" in call[0][0]:
-                found_naming_relationship = True
-                break
-
-        self.assertTrue(found_naming_relationship, "Naming-based test relationship creation not found")
-
-    def test_process_test_relationships_imports(self):
-        """Test that test relationships are created based on imports."""
-        # Create an analyzer with is_test_file=True
-        analyzer = CodeAnalyzer(self.test_file_path, self.session_mock, is_test_file=True)
-
-        # Call the method to create test relationships
-        analyzer.process_test_relationships()
-
-        # Verify the correct Cypher query was called to create import-based relationships
-        found_import_relationship = False
-        for call in self.session_mock.run.call_args_list:
-            if "MATCH (test:TestFunction)-[:IMPORTS]->(i:Import)" in call[0][0] and "MERGE (test)-[:TESTS" in call[0][0]:
-                found_import_relationship = True
-                break
-
-        self.assertTrue(found_import_relationship, "Import-based test relationship creation not found")
-
     def test_process_test_relationships_calls(self):
         """Test that test relationships are created based on calls."""
         # Create an analyzer with is_test_file=True

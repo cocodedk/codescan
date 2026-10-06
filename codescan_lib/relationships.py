@@ -1,12 +1,12 @@
-"""Graph passes that need the whole project: call resolution and test linking.
+"""Graph pass that needs the whole project: call resolution.
 
-They run after every file is analyzed, so the result does not depend on the
+It runs after every file is analyzed, so the result does not depend on the
 order files were visited in.
 """
 from typing import Any
 
 from .call_targets import NOT_NESTED, Definition, Position, choose_targets, module_of
-from .constants import COLOR_CALLS, COLOR_TESTS, TEST_FUNCTION_PREFIXES
+from .constants import COLOR_CALLS
 
 
 def resolve_calls(session: Any) -> None:
@@ -57,39 +57,3 @@ def resolve_calls(session: Any) -> None:
 def count_unresolved(session: Any) -> int:
     """Number of callee names no definition could be found for."""
     return int(session.run("MATCH (ref:ReferenceFunction) RETURN count(ref) AS n").single()["n"])
-
-
-def link_tests(session: Any, function_prefixes: list[str] | None = None) -> None:
-    """Connect test functions to the production functions they exercise."""
-    for prefix in function_prefixes or TEST_FUNCTION_PREFIXES:
-        session.run(
-            """
-            MATCH (test:TestFunction)
-            WHERE test.name STARTS WITH $prefix
-            WITH test, substring(test.name, $prefix_len) AS tested_name
-            MATCH (prod:Function)
-            WHERE NOT prod:TestFunction AND prod.is_reference = false
-              AND (prod.name = tested_name OR prod.name ENDS WITH ('.' + tested_name))
-            MERGE (test)-[:TESTS {method: 'naming_pattern', color: $edge_color}]->(prod)
-            """,
-            prefix=prefix,
-            prefix_len=len(prefix),
-            edge_color=COLOR_TESTS,
-        )
-    session.run(
-        """
-        MATCH (test:TestFunction)-[:IMPORTS]->(i:Import)
-        MATCH (prod:Function)
-        WHERE NOT prod:TestFunction AND prod.is_reference = false AND prod.name = i.name
-        MERGE (test)-[:TESTS {method: 'import', color: $edge_color}]->(prod)
-        """,
-        edge_color=COLOR_TESTS,
-    )
-    session.run(
-        """
-        MATCH (test:TestFunction)-[:CALLS]->(prod:Function)
-        WHERE NOT prod:TestFunction AND prod.is_reference = false
-        MERGE (test)-[:TESTS {method: 'call', color: $edge_color}]->(prod)
-        """,
-        edge_color=COLOR_TESTS,
-    )

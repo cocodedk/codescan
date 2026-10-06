@@ -6,8 +6,9 @@ from tqdm import tqdm
 
 from .analyzer import CodeAnalyzer
 from .constants import IGNORE_DIRS
+from .coverage_links import link_tests
 from .db_operations import ensure_indexes, link_file_contents
-from .relationships import count_unresolved, link_tests, resolve_calls
+from .relationships import count_unresolved, resolve_calls
 from .stats_collector import StatsCollector
 from .utils import (
     get_relative_path,

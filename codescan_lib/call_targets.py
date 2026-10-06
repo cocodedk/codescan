@@ -51,6 +51,17 @@ def bare_targets(caller: Definition, candidates: list[Definition], by_position: 
     return same_file or (module_level if len({d.file for d in module_level}) == 1 else [])
 
 
+def imported_targets(callee: str, candidates: list[Definition], imported: str) -> list[Definition]:
+    """Module-level functions a bare name reaches when the file imported it as `imported` (`pkg.a.compute`).
+
+    Every definition in that module counts (overloads); nothing else does; a name imported under another name (`as`) resolves to nothing.
+    """
+    module, _, name = imported.rpartition(".")
+    if name != callee:
+        return []
+    return [d for d in candidates if not is_method(d) and d.parent_line == NOT_NESTED and module_of(d.file) == module]
+
+
 def self_targets(caller: Definition, callee: str, candidates: list[Definition]) -> list[Definition]:
     """Methods `self.name()` reaches: the caller's own class first, then the closest file."""
     owner = caller.name.rpartition(".")[0]
@@ -85,6 +96,8 @@ def choose_targets(
     kind: str = ATTR_CALL, recv_class: str = "", recv_module: str = "",
 ) -> list[Definition]:
     """Every definition a call certainly refers to; an empty list leaves the call unresolved."""
+    if kind == BARE_CALL and recv_module:
+        return imported_targets(callee, candidates, recv_module)
     if kind == BARE_CALL:
         return bare_targets(caller, candidates, by_position)
     if kind == SELF_CALL:
