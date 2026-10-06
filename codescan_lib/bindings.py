@@ -118,9 +118,10 @@ class ModuleScan(BindingScan):
         return self.rebound() | {name for name in self.names if self.names[name] > self.defs[name]} | set(self.funcs)
 
     def unstable(self) -> set[str]:
-        """Names bound more than once with a site that is no `def` or `class`: a call to one may reach anything."""
+        """Names a call to which may reach anything: bound by a site that is no `def`, `class` or import
+        (even once), or bound more than once with a site that is no `def` or `class`."""
         return {name for name in self.names.keys() | self.imports.keys()
-                if self.sites(name) > 1 and self.sites(name) > self.defs[name]}
+                if self.names[name] > self.defs[name] or (self.sites(name) > 1 and self.sites(name) > self.defs[name])}
 
     def clean_exports(self) -> set[str]:
         """Names bound exactly once, by a `def` or `class`: what another module can import with certainty."""

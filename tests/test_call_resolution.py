@@ -683,3 +683,48 @@ def test_should_count_a_file_caller_in_most_called_functions(session, tmp_path):
 def test_should_not_resolve_a_bare_call_to_a_function_when_the_calling_scope_binds_the_name(session, tmp_path, body):
     scan(session, tmp_path, {"m.py": "def helper(): pass\n" + body})
     assert not {c for c, t in resolved_calls(session) if t == "helper"}
+
+
+def test_should_resolve_a_bare_call_to_the_nearest_scopes_nested_def(session, tmp_path):
+    source = "def outer(helper):\n    def inner():\n        def helper(): pass\n        helper()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("inner", "helper") in resolved_calls(session)
+
+
+@pytest.mark.parametrize("header", [
+    "from unittest.mock import Mock as dataclass", "from mylib import dataclass", "import mylib as dataclasses",
+])
+def test_should_not_trust_a_known_decorator_name_that_was_imported_from_elsewhere(session, tmp_path, header):
+    decorator = "@dataclasses.dataclass" if "dataclasses" in header else "@dataclass"
+    scan(session, tmp_path, {"m.py": f"{header}\n{decorator}\nclass Foo: pass\nFoo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_trust_a_known_decorator_imported_under_another_name(session, tmp_path):
+    source = "from dataclasses import dataclass as dc\n@dc\nclass Foo: pass\nFoo()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert instantiated(session) == {("m.py", "Foo", "m.py")}
+
+
+@pytest.mark.parametrize("source", [
+    "def helper(): return int\npending = (helper() for _ in [1])\n",
+    "def helper(): return int\ntype Alias = helper()\n",
+])
+def test_should_not_record_lazy_code_as_a_module_level_call(session, tmp_path, source):
+    scan(session, tmp_path, {"m.py": source})
+    assert module_calls(session) == set()
+
+
+@pytest.mark.parametrize("source", [
+    "def helper(): return [1]\nitems = [x for x in helper()]\n",
+    "def helper(): return [1]\nitems = [x for x in [1] if helper()]\n",
+    "def helper(): return [1]\nitems = (x for x in helper())\n",
+])
+def test_should_record_eager_module_level_calls_in_comprehensions(session, tmp_path, source):
+    scan(session, tmp_path, {"m.py": source})
+    assert module_calls(session) == {("m.py", "helper")}
+
+
+def test_should_not_resolve_a_call_to_another_files_function_when_the_module_assigns_the_name(session, tmp_path):
+    scan(session, tmp_path, {"a.py": "def helper(): return 1\n", "m.py": "helper = lambda: 2\nhelper()\n"})
+    assert module_calls(session) == set()

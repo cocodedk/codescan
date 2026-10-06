@@ -37,8 +37,7 @@ COLOR_FILE_CONTAINS = "#2196F3"
 TEST_METHOD_NAMING = "naming_pattern"
 TEST_METHOD_CALL = "call"
 
-# Decorators known to return the class they decorate: a call to such a class builds that class
+# Decorators known to return the class they decorate (by the module that defines them): a call to such a class builds it
 CLASS_PRESERVING_DECORATORS = {
-    "dataclass", "dataclasses.dataclass", "total_ordering", "functools.total_ordering",
-    "final", "typing.final", "runtime_checkable", "typing.runtime_checkable", "unique", "enum.unique",
+    "dataclasses.dataclass", "functools.total_ordering", "typing.final", "typing.runtime_checkable", "enum.unique",
 }

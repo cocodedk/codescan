@@ -23,7 +23,7 @@ class CallsMixin(ast.NodeVisitor):
     current_scope: str
     module_rebound: set[str]  # names the module binds in a way a receiver cannot rely on (see ModuleScan.untrusted)
     module_unstable: set[str]  # names the module binds more than once, not only by `def` or `class`
-    other_bound: set[str]  # names this function, or one around it, binds other than by a nested `def`
+    scopes: list[tuple[set[str], set[str]]]  # the functions around this call, innermost last: (names bound, those bound other than by a nested `def`)
     deferred: set[int]  # ids of the nodes in lambda bodies and annotations
     blocked_names: set[str]  # names this call's function, or one around it, rebinds: never trusted as a receiver
     enclosing_bound: set[str]  # every name the functions around the one being visited bind, imports included
@@ -44,6 +44,16 @@ class CallsMixin(ast.NodeVisitor):
         only_defs = {name for name, count in scan.funcs.items() if count == scan.names[name] and name not in scan.imports}
         return self._rebound(scan) - only_defs
 
+    def _skips_function(self, callee: str) -> bool:
+        """A bare name reaches a function only if the nearest scope binding it does so by a nested `def`.
+
+        No function scope binds it: the module's rules decide.
+        """
+        for bound, otherwise in reversed(self.scopes):
+            if callee in bound:
+                return callee in otherwise
+        return callee in self.module_unstable
+
     @contextmanager
     def _bindings(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[None]:
         """Trust only receivers this function (and the ones around it) cannot have rebound.
@@ -52,8 +62,8 @@ class CallsMixin(ast.NodeVisitor):
         This function is trusted for a name it imports only once and that nothing outside imported too.
         """
         scan = scan_function(node)
-        saved = (self.blocked_names, self.enclosing_bound, self.sole_bindings, self.instances, self.other_bound)
-        self.other_bound = self.other_bound | self._bound_otherwise(scan)
+        saved = (self.blocked_names, self.enclosing_bound, self.sole_bindings, self.instances)
+        self.scopes.append((set(scan.names) | set(scan.imports), self._bound_otherwise(scan)))
         self.blocked_names = self.enclosing_bound | self._rebound(scan) | self.module_rebound
         self.enclosing_bound = self.enclosing_bound | scan.names.keys() | scan.imports.keys()
         self.sole_bindings = {name for name, count in scan.names.items() if count == 1 and name not in scan.imports}
@@ -61,7 +71,8 @@ class CallsMixin(ast.NodeVisitor):
         try:
             yield
         finally:
-            self.blocked_names, self.enclosing_bound, self.sole_bindings, self.instances, self.other_bound = saved
+            self.blocked_names, self.enclosing_bound, self.sole_bindings, self.instances = saved
+            self.scopes.pop()
 
     @contextmanager
     def _class_bindings(self, node: ast.ClassDef) -> Iterator[None]:
@@ -125,7 +136,7 @@ class CallsMixin(ast.NodeVisitor):
                 called_name=callee, caller_name=self.current_function,
                 caller_line=self.current_function_line, line=line, args=args, kind=kind,
                 recv_class=recv_class, recv_module=recv_module,
-                skip_function=bare and callee in (self.module_unstable | self.other_bound), skip_class=bare and callee in self.blocked_names,
+                skip_function=bare and self._skips_function(callee), skip_class=bare and callee in self.blocked_names,
             )
 
         # Calls nested in the arguments (or the callee expression) still count

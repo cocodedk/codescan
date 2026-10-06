@@ -7,7 +7,7 @@ from .analyzer_calls import CallsMixin
 from .analyzer_constants import ConstantsMixin
 from .analyzer_imports import ImportsMixin
 from .bindings import scan_module
-from .call_names import deferred_nodes, keeps_class
+from .call_names import deferred_nodes, import_origins, keeps_class
 from .constants import COLOR_CLASS_CONTAINS
 from .coverage_links import link_tests
 from .graph_batch import LINKS, NODES, GraphBatch
@@ -40,7 +40,8 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self.import_bindings: dict[str, str] = {}  # names this file imported from the project -> dotted name
         self.module_rebound: set[str] = set()  # see CallsMixin
         self.module_unstable: set[str] = set()
-        self.other_bound: set[str] = set()
+        self.scopes: list[tuple[set[str], set[str]]] = []
+        self.origins: dict[str, str] = {}
         self.deferred: set[int] = set()
         self.class_outer_imports: list[tuple[set[str], dict[str, str]]] = []  # imports outside each open class
         self.blocked_names: set[str] = set()
@@ -92,7 +93,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         scan = scan_module(node)
         self.module_rebound = scan.untrusted()
         self.blocked_names = set(self.module_rebound)  # module-level calls trust what a function would
-        self.module_unstable, self.deferred = scan.unstable(), deferred_nodes(node)
+        self.module_unstable, self.deferred, self.origins = scan.unstable(), deferred_nodes(node), import_origins(node)
         self.batch.add(  # which names another module can import with certainty (see call_targets.exported_functions)
             LINKS, "UNWIND $rows AS row MATCH (f:File {path: $file}) SET f.exports = row.exports",
             exports=sorted(scan.clean_exports()),
@@ -114,7 +115,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
             "{name: row.name, file: $file, line: row.line, end_line: row.end_line, length: row.length, "
             "nested: row.nested, plain: row.plain})",
             name=node.name, line=line, end_line=end_line, length=length, nested=self.current_scope != "module",
-            plain=keeps_class(node.decorator_list, self.external_names - self.blocked_names),
+            plain=keeps_class(node.decorator_list, self.external_names - self.blocked_names, self.origins),
         )
 
         # Decorators and base classes run in the enclosing scope; the body in the class's
