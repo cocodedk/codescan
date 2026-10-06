@@ -5,7 +5,14 @@ order files were visited in.
 """
 from typing import Any
 
-from .call_targets import NOT_NESTED, Definition, Position, choose_targets, module_of
+from .call_targets import (
+    NOT_NESTED,
+    Definition,
+    Position,
+    build_exporters,
+    choose_targets,
+    module_of,
+)
 from .constants import COLOR_CALLS
 
 
@@ -21,7 +28,10 @@ def resolve_calls(session: Any) -> None:
         index.setdefault(row["name"].rpartition(".")[2], []).append(definition)
         by_position[(definition.file, definition.line)] = definition
 
-    modules = {module_of(row["path"]) for row in session.run("MATCH (f:File) RETURN f.path AS path")}
+    files = [(row["path"], row["exports"]) for row in session.run(
+        "MATCH (f:File) RETURN f.path AS path, coalesce(f.exports, []) AS exports")]
+    modules = {module_of(path) for path, _ in files}
+    exporters = build_exporters(files)
 
     resolved = []
     for row in session.run("""
@@ -34,7 +44,7 @@ def resolve_calls(session: Any) -> None:
         # A receiver that is a project module is never read as a class of the same name
         recv_class = "" if row["recv_module"] and row["recv_module"] in modules else row["recv_class"]
         targets = choose_targets(caller, row["callee"], index.get(row["callee"], []), by_position,
-                                 row["kind"], recv_class, row["recv_module"])
+                                 row["kind"], recv_class, row["recv_module"], exporters)
         resolved += [{**row.data(), "target": t.name, "target_file": t.file, "target_line": t.line} for t in targets]
 
     if resolved:

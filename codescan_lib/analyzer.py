@@ -6,7 +6,7 @@ from typing import Any
 from .analyzer_calls import CallsMixin
 from .analyzer_constants import ConstantsMixin
 from .analyzer_imports import ImportsMixin
-from .bindings import rebound_in_module
+from .bindings import scan_module
 from .constants import COLOR_CLASS_CONTAINS
 from .coverage_links import link_tests
 from .graph_batch import LINKS, NODES, GraphBatch
@@ -85,7 +85,12 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
             self.visit(child)
 
     def visit_Module(self, node: ast.Module) -> None:
-        self.module_rebound = rebound_in_module(node)
+        scan = scan_module(node)
+        self.module_rebound = scan.rebound()
+        self.batch.add(  # which names another module can import with certainty (see call_targets.exported_functions)
+            LINKS, "UNWIND $rows AS row MATCH (f:File {path: $file}) SET f.exports = row.exports",
+            exports=sorted(scan.clean_exports()),
+        )
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -106,7 +111,11 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
 
         # Decorators and base classes run in the enclosing scope; the body in the class's
         self._visit_all([*node.decorator_list, *node.bases, *node.keywords])
-        outside = (set(self.external_names), dict(self.import_bindings))
+        # A class body is invisible to its methods, and to the classes inside it: they see what is outside it
+        outside = (
+            self.class_outer_imports[-1] if self.current_scope == "class"
+            else (set(self.external_names), dict(self.import_bindings))
+        )
         with self._scope("class", node.name, self.current_function, self.current_function_line):
             self.class_outer_imports.append(outside)
             try:

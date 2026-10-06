@@ -51,21 +51,32 @@ def bare_targets(caller: Definition, candidates: list[Definition], by_position: 
     return same_file or (module_level if len({d.file for d in module_level}) == 1 else [])
 
 
-def module_functions(candidates: list[Definition], module: str) -> list[Definition]:
-    """Module-level functions of a module; when `pkg/a.py` and `pkg/a/__init__.py` both exist, the package wins."""
-    found = [d for d in candidates if not is_method(d) and d.parent_line == NOT_NESTED and module_of(d.file) == module]
-    return [d for d in found if Path(d.file).name == "__init__.py"] or found
+Exporters = dict[str, tuple[str, set[str]]]  # module -> (the file that is the module, names it binds once by a def)
 
 
-def imported_targets(callee: str, candidates: list[Definition], imported: str) -> list[Definition]:
-    """Module-level functions a bare name reaches when the file imported it as `imported` (`pkg.a.compute`).
+def build_exporters(files: list[tuple[str, list[str]]]) -> Exporters:
+    """Which file a module name means: the package when `pkg/a/__init__.py` and `pkg/a.py` both exist."""
+    exporters: Exporters = {}
+    for path, exports in sorted(files, key=lambda f: Path(f[0]).name != "__init__.py"):
+        exporters.setdefault(module_of(path), (path, set(exports)))
+    return exporters
 
-    Every definition in that module counts (overloads); nothing else does; a name imported under another name (`as`) resolves to nothing.
+
+def exported_functions(callee: str, candidates: list[Definition], module: str, exporters: Exporters) -> list[Definition]:
+    """Module-level function `callee` of a module, only if the module binds that name once, by a `def`."""
+    file, exports = exporters.get(module, ("", set()))
+    if callee not in exports:
+        return []
+    return [d for d in candidates if d.file == file and not is_method(d) and d.parent_line == NOT_NESTED]
+
+
+def imported_targets(callee: str, candidates: list[Definition], imported: str, exporters: Exporters) -> list[Definition]:
+    """Functions a bare name reaches when the file imported it as `imported` (`pkg.a.compute`).
+
+    A name imported under another name (`as`) resolves to nothing.
     """
     module, _, name = imported.rpartition(".")
-    if name != callee:
-        return []
-    return module_functions(candidates, module)
+    return exported_functions(callee, candidates, module, exporters) if name == callee else []
 
 
 def self_targets(caller: Definition, callee: str, candidates: list[Definition]) -> list[Definition]:
@@ -77,7 +88,8 @@ def self_targets(caller: Definition, callee: str, candidates: list[Definition]) 
 
 
 def receiver_targets(
-    caller: Definition, callee: str, candidates: list[Definition], recv_class: str, recv_module: str
+    caller: Definition, callee: str, candidates: list[Definition], recv_class: str, recv_module: str,
+    exporters: Exporters,
 ) -> list[Definition]:
     """Definitions `receiver.name()` reaches when the receiver is a known project class or module.
 
@@ -94,18 +106,18 @@ def receiver_targets(
         return narrowest(methods, tiers)
     if not recv_module:
         return []
-    return module_functions(candidates, recv_module)
+    return exported_functions(callee, candidates, recv_module, exporters)
 
 
 def choose_targets(
     caller: Definition, callee: str, candidates: list[Definition], by_position: Position,
-    kind: str = ATTR_CALL, recv_class: str = "", recv_module: str = "",
+    kind: str = ATTR_CALL, recv_class: str = "", recv_module: str = "", exporters: Exporters | None = None,
 ) -> list[Definition]:
     """Every definition a call certainly refers to; an empty list leaves the call unresolved."""
     if kind == BARE_CALL and recv_module:
-        return imported_targets(callee, candidates, recv_module)
+        return imported_targets(callee, candidates, recv_module, exporters or {})
     if kind == BARE_CALL:
         return bare_targets(caller, candidates, by_position)
     if kind == SELF_CALL:
         return self_targets(caller, callee, candidates)
-    return receiver_targets(caller, callee, candidates, recv_class, recv_module)
+    return receiver_targets(caller, callee, candidates, recv_class, recv_module, exporters or {})

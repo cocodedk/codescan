@@ -126,3 +126,37 @@ def test_should_resolve_an_import_to_the_package_when_a_module_has_the_same_name
     }
     scan(session, tmp_path, files)
     assert linked_files(session) == {("pkg/a/__init__.py",)}
+
+
+AB = {"pkg/a.py": "def compute(): return 1\n", "pkg/b.py": "def compute(): return 2\n"}
+IMPORT_AND_CALL = "from pkg.a import compute\ndef test_it(): assert compute() == 3\n"
+
+
+def test_should_not_resolve_an_import_to_a_module_that_assigns_the_name_in_its_package(session, tmp_path):
+    files = {**AB, "pkg/a/__init__.py": "compute = lambda: 3\n", "tests/test_x.py": IMPORT_AND_CALL}
+    scan(session, tmp_path, files)
+    assert linked_files(session) == set()
+
+
+def test_should_not_resolve_an_import_to_a_module_that_also_assigns_the_name(session, tmp_path):
+    files = {**AB, "pkg/a.py": AB["pkg/a.py"] + "compute = lambda: 3\n", "tests/test_x.py": IMPORT_AND_CALL}
+    scan(session, tmp_path, files)
+    assert linked_files(session) == set()
+
+
+def test_should_not_let_an_import_in_an_outer_class_reach_methods_of_a_nested_class(session, tmp_path):
+    test = (
+        "from pkg.b import compute\nclass Outer:\n    from pkg.a import compute\n"
+        "    class TestInner:\n        def test_it(self): assert compute() == 2\n"
+    )
+    scan(session, tmp_path, {**AB, "tests/test_x.py": test})
+    assert linked_files(session) == {("pkg/b.py",)}
+
+
+def test_should_not_resolve_an_import_the_module_rebinds_with_a_walrus_in_a_class_base(session, tmp_path):
+    test = (
+        "from pkg.a import compute\nclass C((compute := lambda: object)()):\n    pass\n"
+        "def test_it(): assert compute() is object\n"
+    )
+    scan(session, tmp_path, {**AB, "tests/test_x.py": test})
+    assert linked_files(session) == set()

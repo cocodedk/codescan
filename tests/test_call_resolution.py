@@ -385,10 +385,10 @@ def test_should_leave_a_call_unresolved_when_its_name_is_assigned_twice(session,
     assert {t for c, t in resolved_calls(session) if c == "f"} == set()
 
 
-def test_should_link_an_imported_call_to_every_overload_in_the_other_file(session, tmp_path):
+def test_should_not_resolve_an_imported_call_to_a_name_the_other_file_defines_twice(session, tmp_path):
     files = {"lib.py": "def f(a): pass\ndef f(a, b=1): pass\n", "m.py": "from lib import f\ndef g():\n    f(1)\n"}
     scan(session, tmp_path, files)
-    assert rows(session, "MATCH (:Function {name: 'g'})-[:CALLS]->(b:Function) RETURN b.line") == {(1,), (2,)}
+    assert rows(session, "MATCH (:Function {name: 'g'})-[:CALLS]->(b:Function {is_reference: false}) RETURN b.line") == set()
 
 
 R_RUN = "class R:\n    def run(self): pass\n"
