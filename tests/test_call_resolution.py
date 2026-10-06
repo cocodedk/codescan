@@ -671,3 +671,15 @@ def test_should_resolve_a_call_on_a_module_imported_in_a_class_body(session, tmp
 def test_should_count_a_file_caller_in_most_called_functions(session, tmp_path):
     scan(session, tmp_path, {"m.py": "def main(): pass\nmain()\n"})
     assert {r["name"]: r["num_callers"] for r in most_called_functions(limit=100)} == {"main": 1}
+
+
+@pytest.mark.parametrize("body", [
+    "def f(helper):\n    helper()\n",
+    "def f(x):\n    helper = x\n    helper()\n",
+    "def f(x):\n    for helper in x:\n        helper()\n",
+    "def outer(helper):\n    def inner():\n        helper()\n",
+    "def f():\n    class helper: pass\n    helper()\n",
+])
+def test_should_not_resolve_a_bare_call_to_a_function_when_the_calling_scope_binds_the_name(session, tmp_path, body):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\n" + body})
+    assert not {c for c, t in resolved_calls(session) if t == "helper"}

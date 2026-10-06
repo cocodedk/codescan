@@ -14,6 +14,7 @@ class BindingScan(ast.NodeVisitor):
     def __init__(self) -> None:
         self.names: Counter[str] = Counter()
         self.imports: Counter[str] = Counter()
+        self.funcs: Counter[str] = Counter()  # the `def` statements among the `names` sites
 
     def visit_Name(self, node: ast.Name) -> None:
         if not isinstance(node.ctx, ast.Load):
@@ -32,6 +33,7 @@ class BindingScan(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self.names[node.name] += 1
+        self.funcs[node.name] += 1
         defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d)]
         for outer in (*node.decorator_list, *defaults):
             self.visit(outer)
@@ -90,11 +92,9 @@ class ModuleScan(BindingScan):
     def __init__(self) -> None:
         super().__init__()
         self.defs: Counter[str] = Counter()
-        self.funcs: Counter[str] = Counter()  # the `def` statements among them
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self.defs[node.name] += 1
-        self.funcs[node.name] += 1
         super().visit_FunctionDef(node)
 
     visit_AsyncFunctionDef = visit_FunctionDef
