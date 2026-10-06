@@ -34,3 +34,31 @@ def pass_through_functions() -> list[dict[str, Any]]:
         ORDER BY callers DESC, f.file, f.line
         """
     )
+
+
+@mcp.tool()
+def most_complex_functions(limit: int = 20) -> list[dict[str, Any]]:
+    """
+    List the defined, non-test functions with the most branching (the best places to simplify flow).
+
+    `complexity` is 1 plus one for each if/elif, for, while, except handler, match case, conditional
+    expression, comprehension if, and extra operand of and/or, counted in the function's own body only.
+    `max_nesting` is the deepest level of nested if/for/while/try/with/match blocks (0 for a flat body).
+
+    Args:
+        limit: Maximum number of functions to return (default 20).
+
+    Returns:
+        Rows of name, file, line, length, complexity and max_nesting, highest complexity first, then deepest nesting.
+    """
+    return q(
+        """
+        MATCH (f:Function)
+        WHERE f.is_reference = false AND NOT f:Test AND f.complexity IS NOT NULL
+        RETURN f.name AS name, f.file AS file, f.line AS line, f.length AS length,
+               f.complexity AS complexity, f.max_nesting AS max_nesting
+        ORDER BY complexity DESC, max_nesting DESC, f.file, f.line
+        LIMIT $limit
+        """,
+        limit=limit,
+    )
