@@ -6,14 +6,23 @@ from .graph_batch import LINKS, GraphBatch
 
 SET_FORWARDER = """UNWIND $rows AS row
     MATCH (f:Function {name: row.name, file: $file, line: row.line, is_reference: false})
-    SET f.forwards_to = row.forwards_to, f.forwards_same_args = row.same_args"""
+    SET f.forwards_to = row.forwards_to, f.forwards_line = row.call_line, f.forwards_args = row.call_args,
+        f.forwards_same_args = row.same_args"""
 SELF_PARAMETERS = 1  # a method's first parameter is the receiver, never passed on
+
+
+def is_docstring(value: ast.expr) -> bool:
+    return isinstance(value, ast.Constant) and isinstance(value.value, str)
+
+
+def is_static(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any(isinstance(d, ast.Name) and d.id == "staticmethod" for d in node.decorator_list)
 
 
 def forwarded_call(node: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Call | None:
     """The call that is the function's whole body (after a docstring): `return <call>` or a bare `<call>`."""
     body = node.body
-    if len(body) > 1 and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+    if len(body) > 1 and isinstance(body[0], ast.Expr) and is_docstring(body[0].value):
         body = body[1:]
     if len(body) != 1 or not isinstance(body[0], ast.Return | ast.Expr):
         return None
@@ -44,4 +53,5 @@ def mark_forwarder(
     target = callee_name(call.func, external_names) if call else None
     if call and target:
         batch.add(LINKS, SET_FORWARDER, name=name, line=line, forwards_to=target,
-                  same_args=passed_on(node, call, is_method))
+                  call_line=call.lineno, call_args=", ".join(ast.unparse(arg) for arg in call.args),  # the call's edge
+                  same_args=passed_on(node, call, is_method and not is_static(node)))

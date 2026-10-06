@@ -176,13 +176,13 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
                 color=COLOR_CLASS_CONTAINS, class_name=owner, func_name=full_name, line=line,
             )
 
-        mark_forwarder(self.batch, node, full_name, line, owner is not None, self.external_names)
         # Decorators, defaults and annotations run in the enclosing scope; the body in the function's
         self._visit_all([*node.decorator_list, node.args])
         if node.returns:
             self.visit(node.returns)
         outside = self.class_outer_imports[-1] if owner else None
         with self._scope("function", self.current_class, full_name, line, outside), self._bindings(node):
+            mark_forwarder(self.batch, node, full_name, line, owner is not None, self.external_names)
             self._visit_all(node.body)
 
     visit_AsyncFunctionDef = visit_FunctionDef

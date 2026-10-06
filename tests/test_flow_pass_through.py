@@ -104,9 +104,53 @@ def test_should_count_callers_and_order_rows_by_them(session, tmp_path):
     assert [(r["name"], r["callers"]) for r in rows] == [("many", 2), ("few", 1)]
 
 
-def test_should_count_module_level_code_as_a_caller(session, tmp_path):
+def test_should_not_count_module_level_code_as_a_caller(session, tmp_path):
     rows = listed(session, tmp_path, FORWARD + "\na(1)\n")
+    assert rows["a"]["callers"] == 0
+
+
+def test_should_count_each_calling_function_once(session, tmp_path):
+    rows = listed(session, tmp_path, FORWARD + "\ndef c():\n    a(1)\n    a(2)\n")
     assert rows["a"]["callers"] == 1
+
+
+def test_should_take_the_outer_call_as_the_target_not_an_argument_call(session, tmp_path):
+    source = "def b():\n    return 1\nclass C:\n    def a(self):\n        return self.b(b())\n    def b(self, x):\n        return x\n"
+    rows = listed(session, tmp_path, source)
+    assert rows["C.a"]["target"] == "C.b"
+
+
+def test_should_not_list_a_forwarder_whose_outer_call_is_unresolved(session, tmp_path):
+    rows = listed(session, tmp_path, "def b():\n    return 1\ndef a(obj):\n    return obj.b(b())\n")
+    assert "a" not in rows
+
+
+def test_should_not_skip_a_parameter_of_a_static_method(session, tmp_path):
+    source = "def b(x):\n    return x\nclass C:\n    @staticmethod\n    def a(x):\n        return b(x)\n"
+    rows = listed(session, tmp_path, source)
+    assert rows["C.a"]["same_arguments"] is True
+
+
+def test_should_skip_cls_of_a_class_method(session, tmp_path):
+    source = "def b(x):\n    return x\nclass C:\n    @classmethod\n    def a(cls, x):\n        return b(x)\n"
+    rows = listed(session, tmp_path, source)
+    assert rows["C.a"]["same_arguments"] is True
+
+
+def test_should_not_take_a_non_string_constant_for_a_docstring(session, tmp_path):
+    rows = listed(session, tmp_path, "def b():\n    return 1\ndef a():\n    123\n    return b()\n")
+    assert "a" not in rows
+
+
+def test_should_list_a_name_that_only_ends_with_double_underscore(session, tmp_path):
+    rows = listed(session, tmp_path, "def b(x):\n    return x\ndef a__(x):\n    return b(x)\n")
+    assert "a__" in rows
+
+
+def test_should_not_let_a_class_body_import_hide_the_call_from_a_method(session, tmp_path):
+    source = "def b():\n    return 1\nclass C:\n    from math import sin as b\n    def a(self):\n        return b()\n"
+    rows = listed(session, tmp_path, source)
+    assert (rows["C.a"]["target"], rows["C.a"]["target_file"]) == ("b", "m.py")
 
 
 def test_should_register_the_tool_with_the_server():
