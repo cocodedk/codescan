@@ -9,12 +9,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
-
 # Run as an unprivileged user -- an MCP tool executes arbitrary scan logic
 # against whatever the client points it at, so it shouldn't run as root.
-RUN useradd --create-home --shell /usr/sbin/nologin codescan \
-    && chown -R codescan:codescan /app
+RUN useradd --create-home --shell /usr/sbin/nologin codescan
+COPY --chown=codescan:codescan . .
 USER codescan
 
 ENTRYPOINT ["python", "codescan_mcp_server.py"]
