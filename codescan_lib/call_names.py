@@ -117,10 +117,11 @@ def _deferred_roots(node: ast.AST) -> list[ast.expr | None]:
         return [node.annotation]
     if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
         return [node.returns]
-    if isinstance(node, ast.TypeAlias):
-        return [node.value]
-    if isinstance(node, ast.TypeVar):
-        return [node.bound]
+    kind = type(node).__name__  # PEP 695 nodes (3.12) are matched by name: older `ast` modules lack them
+    if kind == "TypeAlias":
+        return [getattr(node, "value", None)]
+    if kind == "TypeVar":
+        return [getattr(node, "bound", None)]
     if isinstance(node, ast.GeneratorExp):  # only the first iterable is evaluated at once
         gens = node.generators
         return [node.elt, *(g.iter for g in gens[1:]), *(test for g in gens for test in g.ifs)]
