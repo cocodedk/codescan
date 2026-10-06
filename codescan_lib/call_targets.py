@@ -18,6 +18,11 @@ class Definition(NamedTuple):
 Position = dict[tuple[str, int], Definition]
 
 
+def module_scope(file: str) -> Definition:
+    """Stand-in caller for code outside every function: it sees what module level sees, and has no `self`."""
+    return Definition("", file, 0, NOT_NESTED)
+
+
 def is_method(d: Definition) -> bool:
     return "." in d.name
 
@@ -80,7 +85,9 @@ def imported_targets(callee: str, candidates: list[Definition], imported: str, e
 
 
 def self_targets(caller: Definition, callee: str, candidates: list[Definition]) -> list[Definition]:
-    """Methods `self.name()` reaches: the caller's own class first, then the closest file."""
+    """Methods `self.name()` reaches: the caller's own class first, then the closest file. None at module level."""
+    if not caller.name:
+        return []
     owner = caller.name.rpartition(".")[0]
     methods = [d for d in candidates if is_method(d)]
     own = lambda d: bool(owner) and d.name == f"{owner}.{callee}" and d.file == caller.file

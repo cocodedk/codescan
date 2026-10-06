@@ -5,6 +5,11 @@ from neo4j import GraphDatabase
 from codescan_lib.analysis import analyze_directory, analyze_file, finalize_graph
 from codescan_lib.constants import NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
 from codescan_lib.db_operations import clear_database
+from codescan_lib.mcp_tools.call_graph import (
+    callers,
+    most_called_functions,
+    uncalled_functions,
+)
 from codescan_lib.stats_collector import StatsCollector
 
 
@@ -441,3 +446,285 @@ def test_should_resolve_a_module_alias_call_only_to_functions_of_that_modules_fi
     scan(session, tmp_path, files)
     edges = rows(session, "MATCH (:Function {name: 'f'})-[:CALLS]->(b:Function {is_reference: false}) RETURN b.name, b.file")
     assert edges == {("helper", "pkg/utils.py")}
+
+
+def instantiated(session):
+    return rows(session, "MATCH (a)-[:INSTANTIATES]->(c:Class) RETURN coalesce(a.name, a.path), c.name, c.file")
+
+
+def module_calls(session):
+    return rows(session, "MATCH (a:File)-[:CALLS]->(b:Function {is_reference: false}) RETURN a.path, b.name")
+
+
+FOO = "class Foo: pass\n"
+
+
+def test_should_link_a_constructor_call_to_the_class_in_another_file(session, tmp_path):
+    scan(session, tmp_path, {"lib.py": FOO, "m.py": "def f():\n    Foo()\n"})
+    assert instantiated(session) == {("f", "Foo", "lib.py")}
+
+
+def test_should_not_leave_a_placeholder_for_a_constructor_call_that_resolved(session, tmp_path):
+    scan(session, tmp_path, {"lib.py": FOO, "m.py": "def f():\n    Foo()\n"})
+    assert unresolved_calls(session) == set()
+
+
+def test_should_keep_a_constructor_call_unresolved_when_no_class_has_that_name(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def f():\n    Foo()\n"})
+    assert (("f", "Foo") in unresolved_calls(session), instantiated(session)) == (True, set())
+
+
+def test_should_keep_the_line_and_arguments_on_an_instantiates_edge(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "def f():\n    Foo(1, 2)\n"})
+    assert rows(session, "MATCH ()-[r:INSTANTIATES]->() RETURN r.line, r.args") == {(3, "1, 2")}
+
+
+def test_should_prefer_the_class_in_the_same_file(session, tmp_path):
+    scan(session, tmp_path, {"a.py": FOO, "m.py": FOO + "def f():\n    Foo()\n"})
+    assert instantiated(session) == {("f", "Foo", "m.py")}
+
+
+def test_should_leave_a_constructor_call_unresolved_when_two_files_define_the_class(session, tmp_path):
+    scan(session, tmp_path, {"a.py": FOO, "b.py": FOO, "m.py": "def f():\n    Foo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_not_link_a_constructor_call_to_a_class_nested_in_a_function(session, tmp_path):
+    scan(session, tmp_path, {"a.py": "def g():\n    class Foo: pass\n", "m.py": "def f():\n    Foo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_leave_a_name_unresolved_when_both_a_class_and_a_function_could_be_meant(session, tmp_path):
+    scan(session, tmp_path, {"a.py": FOO, "b.py": "def Foo(): pass\n", "m.py": "def f():\n    Foo()\n"})
+    assert (instantiated(session), module_calls(session), ("f", "Foo") in unresolved_calls(session)) == (set(), set(), True)
+
+
+def test_should_link_a_constructor_call_through_a_from_import(session, tmp_path):
+    scan(session, tmp_path, {"lib.py": FOO, "m.py": "from lib import Foo\ndef f():\n    Foo()\n"})
+    assert instantiated(session) == {("f", "Foo", "lib.py")}
+
+
+def test_should_not_link_a_constructor_call_through_an_import_of_another_module(session, tmp_path):
+    files = {"a.py": FOO, "lib.py": "x = 1\n", "m.py": "from lib import Foo\ndef f():\n    Foo()\n"}
+    scan(session, tmp_path, files)
+    assert instantiated(session) == set()
+
+
+def test_should_link_a_constructor_call_through_a_module_alias(session, tmp_path):
+    scan(session, tmp_path, {"models.py": FOO, "m.py": "import models\ndef f():\n    models.Foo()\n"})
+    assert instantiated(session) == {("f", "Foo", "models.py")}
+
+
+def test_should_not_link_a_constructor_call_through_another_modules_class(session, tmp_path):
+    files = {"a.py": FOO, "models.py": "x = 1\n", "m.py": "import models\ndef f():\n    models.Foo()\n"}
+    scan(session, tmp_path, files)
+    assert instantiated(session) == set()
+
+
+def test_should_not_link_a_constructor_call_on_an_instance_attribute(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "def f(x):\n    x.Foo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_record_a_module_level_call_with_the_file_as_caller(session, tmp_path):
+    scan(session, tmp_path, {"m.py": 'def main(): pass\nif __name__ == "__main__":\n    main()\n'})
+    assert module_calls(session) == {("m.py", "main")}
+
+
+def test_should_not_list_a_function_called_only_from_module_level_as_uncalled(session, tmp_path):
+    scan(session, tmp_path, {"m.py": 'def main(): pass\nif __name__ == "__main__":\n    main()\n'})
+    assert "main" not in {r["name"] for r in uncalled_functions()}
+
+
+def test_should_record_an_assigned_module_level_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nx = helper()\n"})
+    assert module_calls(session) == {("m.py", "helper")}
+
+
+def test_should_record_a_module_level_constructor_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "x = Foo()\n"})
+    assert instantiated(session) == {("m.py", "Foo", "m.py")}
+
+
+def test_should_record_a_decorator_call_as_a_module_level_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def route(p): pass\n@route('/')\ndef view(): pass\n"})
+    assert module_calls(session) == {("m.py", "route")}
+
+
+def test_should_record_a_class_body_call_as_a_module_level_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def make(): pass\nclass A:\n    x = make()\n"})
+    assert module_calls(session) == {("m.py", "make")}
+
+
+def test_should_keep_the_call_kind_on_a_module_level_edge(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nhelper()\n"})
+    assert rows(session, "MATCH (:File)-[r:CALLS]->(:Function) RETURN r.kind, r.line, r.args") == {("bare", 2, "")}
+
+
+def test_should_resolve_a_module_level_call_through_an_import(session, tmp_path):
+    scan(session, tmp_path, {"lib.py": "def go(): pass\n", "m.py": "from lib import go\ngo()\n"})
+    assert module_calls(session) == {("m.py", "go")}
+
+
+def test_should_leave_an_ambiguous_module_level_call_unresolved(session, tmp_path):
+    scan(session, tmp_path, {"a.py": "def go(): pass\n", "b.py": "def go(): pass\n", "m.py": "go()\n"})
+    assert (module_calls(session), rows(session, "MATCH (:File)-[:CALLS]->(r:ReferenceFunction) RETURN r.name")) == (
+        set(), {("go",)})
+
+
+def test_should_not_resolve_a_module_level_self_call_to_a_method(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "class A:\n    def run(self): pass\n    x = self.run()\n"})
+    assert module_calls(session) == set()
+
+
+def test_should_return_a_file_caller_by_its_path(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nhelper()\n"})
+    assert {r["caller"] for r in callers("helper")} == {"m.py"}
+
+
+def test_should_not_link_a_constructor_call_on_a_name_the_function_binds(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "def f(Foo): Foo()\nf(lambda: None)\n"})
+    assert instantiated(session) == set()
+
+
+@pytest.mark.parametrize("source", [
+    "def helper(): pass\nhelper = lambda: None\nhelper()\n",
+    "def helper(): pass\ntry:\n    from lib import helper\nexcept ImportError:\n    pass\nhelper()\n",
+])
+def test_should_not_resolve_a_module_level_call_to_a_name_the_module_rebinds(session, tmp_path, source):
+    scan(session, tmp_path, {"m.py": source})
+    assert module_calls(session) == set()
+
+
+def test_should_not_resolve_a_function_call_to_a_name_the_module_rebinds(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nhelper = lambda: None\ndef f():\n    helper()\n"})
+    assert ("f", "helper") not in resolved_calls(session)
+
+
+def test_should_not_link_a_constructor_call_to_a_name_the_module_rebinds(session, tmp_path):
+    scan(session, tmp_path, {"a.py": FOO, "m.py": "Foo = lambda: None\nFoo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_not_trust_a_module_name_bound_by_assignment_as_a_receiver(session, tmp_path):
+    files = {"a.py": "class A:\n    def run(): pass\n",
+             "m.py": "class Other:\n    def run(): pass\nA = Other\nA.run()\n"}
+    scan(session, tmp_path, files)
+    assert ("m.py", "A.run") not in module_calls(session)
+
+
+@pytest.mark.parametrize("source", [
+    "def helper(): pass\nunused = lambda: helper()\n",
+    "from __future__ import annotations\ndef helper(): pass\ndef f(x: helper()): pass\n",
+    "def helper(): pass\ndef f() -> helper(): pass\n",
+    "def helper(): pass\nx: helper() = 1\n",
+])
+def test_should_not_record_deferred_code_as_a_module_level_call(session, tmp_path, source):
+    scan(session, tmp_path, {"m.py": source})
+    assert module_calls(session) == set()
+
+
+def test_should_record_a_lambda_default_as_a_module_level_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nunused = lambda x=helper(): x\n"})
+    assert module_calls(session) == {("m.py", "helper")}
+
+
+def test_should_not_link_a_constructor_call_to_a_class_replaced_by_its_decorator(session, tmp_path):
+    source = "def decorate(cls): return lambda: 42\n@decorate\nclass Foo: pass\nFoo()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert instantiated(session) == set()
+
+
+@pytest.mark.parametrize("decorator", [
+    "@dataclass", "@dataclass(frozen=True)", "@dataclasses.dataclass", "@dataclasses.dataclass(frozen=True)",
+    "@functools.total_ordering", "@typing.final",
+])
+def test_should_link_a_constructor_call_to_a_class_with_a_known_decorator(session, tmp_path, decorator):
+    source = f"import dataclasses, functools, typing\nfrom dataclasses import dataclass\n{decorator}\nclass Foo: pass\nFoo()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert instantiated(session) == {("m.py", "Foo", "m.py")}
+
+
+def test_should_not_trust_a_decorator_named_like_a_known_one_when_it_is_defined_here(session, tmp_path):
+    source = "def dataclass(cls): return lambda: 42\n@dataclass\nclass Foo: pass\nFoo()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert instantiated(session) == set()
+
+
+def test_should_prefer_a_same_file_function_over_a_class_in_another_file(session, tmp_path):
+    files = {"m.py": "def helper(): pass\ndef f():\n    helper()\n", "other.py": "class helper: pass\n"}
+    scan(session, tmp_path, files)
+    assert (("f", "helper") in resolved_calls(session), instantiated(session)) == (True, set())
+
+
+def test_should_prefer_a_same_file_class_over_a_function_in_another_file(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "def f():\n    Foo()\n", "other.py": "def Foo(): pass\n"})
+    assert (("f", "Foo") in resolved_calls(session), instantiated(session)) == (False, {("f", "Foo", "m.py")})
+
+
+def test_should_resolve_a_call_on_a_module_imported_in_a_class_body(session, tmp_path):
+    source = "def f():\n    class C:\n        import lib\n        lib.helper()\n"
+    scan(session, tmp_path, {"lib.py": "def helper(): pass\n", "m.py": source})
+    assert ("f", "helper") in resolved_calls(session)
+
+
+def test_should_count_a_file_caller_in_most_called_functions(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def main(): pass\nmain()\n"})
+    assert {r["name"]: r["num_callers"] for r in most_called_functions(limit=100)} == {"main": 1}
+
+
+@pytest.mark.parametrize("body", [
+    "def f(helper):\n    helper()\n",
+    "def f(x):\n    helper = x\n    helper()\n",
+    "def f(x):\n    for helper in x:\n        helper()\n",
+    "def outer(helper):\n    def inner():\n        helper()\n",
+    "def f():\n    class helper: pass\n    helper()\n",
+])
+def test_should_not_resolve_a_bare_call_to_a_function_when_the_calling_scope_binds_the_name(session, tmp_path, body):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\n" + body})
+    assert not {c for c, t in resolved_calls(session) if t == "helper"}
+
+
+def test_should_resolve_a_bare_call_to_the_nearest_scopes_nested_def(session, tmp_path):
+    source = "def outer(helper):\n    def inner():\n        def helper(): pass\n        helper()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("inner", "helper") in resolved_calls(session)
+
+
+@pytest.mark.parametrize("header", [
+    "from unittest.mock import Mock as dataclass", "from mylib import dataclass", "import mylib as dataclasses",
+])
+def test_should_not_trust_a_known_decorator_name_that_was_imported_from_elsewhere(session, tmp_path, header):
+    decorator = "@dataclasses.dataclass" if "dataclasses" in header else "@dataclass"
+    scan(session, tmp_path, {"m.py": f"{header}\n{decorator}\nclass Foo: pass\nFoo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_trust_a_known_decorator_imported_under_another_name(session, tmp_path):
+    source = "from dataclasses import dataclass as dc\n@dc\nclass Foo: pass\nFoo()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert instantiated(session) == {("m.py", "Foo", "m.py")}
+
+
+@pytest.mark.parametrize("source", [
+    "def helper(): return int\npending = (helper() for _ in [1])\n",
+    "def helper(): return int\ntype Alias = helper()\n",
+])
+def test_should_not_record_lazy_code_as_a_module_level_call(session, tmp_path, source):
+    scan(session, tmp_path, {"m.py": source})
+    assert module_calls(session) == set()
+
+
+@pytest.mark.parametrize("source", [
+    "def helper(): return [1]\nitems = [x for x in helper()]\n",
+    "def helper(): return [1]\nitems = [x for x in [1] if helper()]\n",
+    "def helper(): return [1]\nitems = (x for x in helper())\n",
+])
+def test_should_record_eager_module_level_calls_in_comprehensions(session, tmp_path, source):
+    scan(session, tmp_path, {"m.py": source})
+    assert module_calls(session) == {("m.py", "helper")}
+
+
+def test_should_not_resolve_a_call_to_another_files_function_when_the_module_assigns_the_name(session, tmp_path):
+    scan(session, tmp_path, {"a.py": "def helper(): return 1\n", "m.py": "helper = lambda: 2\nhelper()\n"})
+    assert module_calls(session) == set()

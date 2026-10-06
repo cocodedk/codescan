@@ -2,7 +2,7 @@
 import ast
 
 from .call_targets import ATTR_CALL, BARE_CALL, SELF_CALL, SELF_NAMES
-from .constants import BUILTIN_FUNCTIONS
+from .constants import BUILTIN_FUNCTIONS, CLASS_PRESERVING_DECORATORS
 
 
 def callee_name(func: ast.expr, external_names: set[str]) -> str | None:
@@ -75,3 +75,59 @@ def receiver_hints(
     root = _root(receiver)
     name = dotted_name(receiver, imports, blocked)
     return name, name if root and root.id in imports else ""
+
+
+def import_origins(tree: ast.Module) -> dict[str, str]:
+    """Where each name this module imports comes from (`dc` -> `dataclasses.dataclass`); a name imported two ways has none."""
+    origins: dict[str, str] = {}
+    clashes: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            pairs = [(a.asname or a.name.split(".")[0], a.name if a.asname else a.name.split(".")[0]) for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            pairs = [(a.asname or a.name, f"{node.module}.{a.name}") for a in node.names]
+        else:
+            continue
+        for name, origin in pairs:
+            if origins.setdefault(name, origin) != origin:
+                clashes.add(name)
+    return {name: origin for name, origin in origins.items() if name not in clashes}
+
+
+def keeps_class(decorators: list[ast.expr], trusted_imports: set[str], origins: dict[str, str]) -> bool:
+    """True when every decorator is a known one, imported from the module that really defines it.
+
+    `@dataclass` and `@dc` count after `from dataclasses import dataclass [as dc]`, `@dataclasses.dataclass(...)`
+    after `import dataclasses`; the same name imported from anywhere else does not.
+    """
+    for decorator in decorators:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        head, _, rest = ast.unparse(target).partition(".")
+        origin = origins.get(head, "") if head in trusted_imports else ""
+        if not origin or f"{origin}.{rest}".rstrip(".") not in CLASS_PRESERVING_DECORATORS:
+            return False
+    return True
+
+
+def _deferred_roots(node: ast.AST) -> list[ast.expr | None]:
+    """The parts of a node that run later or never: lambda bodies, annotations, generator bodies, type aliases."""
+    if isinstance(node, ast.Lambda):
+        return [node.body]
+    if isinstance(node, ast.arg | ast.AnnAssign):
+        return [node.annotation]
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+        return [node.returns]
+    kind = type(node).__name__  # PEP 695 nodes (3.12) are matched by name: older `ast` modules lack them
+    if kind == "TypeAlias":
+        return [getattr(node, "value", None)]
+    if kind == "TypeVar":
+        return [getattr(node, "bound", None)]
+    if isinstance(node, ast.GeneratorExp):  # only the first iterable is evaluated at once
+        gens = node.generators
+        return [node.elt, *(g.iter for g in gens[1:]), *(test for g in gens for test in g.ifs)]
+    return []
+
+
+def deferred_nodes(tree: ast.Module) -> set[int]:
+    """ids of the nodes that run later, or never, rather than where they are written."""
+    return {id(inner) for node in ast.walk(tree) for root in _deferred_roots(node) if root for inner in ast.walk(root)}
