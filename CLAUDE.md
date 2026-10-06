@@ -1,19 +1,20 @@
 # CLAUDE.md — CodeScan
 
-## Project Overview
+CodeScan parses Python source with `ast`, stores structure and the call graph in Neo4j, and serves the
+graph to Cursor through an MCP server. Python 3.12, package `codescan_lib`.
 
-CodeScan is a Python static code analyzer that parses Python source files using the AST module, extracts structural and call-graph information, and stores it in a Neo4j graph database. It also exposes an MCP (Model Context Protocol) server for Cursor IDE integration, enabling LLM-driven codebase exploration.
+## Check before and after a change
 
-- **Language / Runtime**: Python 3.12
-- **Framework**: Standard library (ast), FastMCP, Neo4j Python driver
-- **Architecture**: Single-responsibility modules — analyzer, MCP server, scanner CLI
-- **Package / Namespace**: `codescan_lib`
+```bash
+bash scripts/gate.sh                 # ruff, then pytest against the local Neo4j on port 7600
+bash scripts/gate.sh tests/test_x.py # ruff, then only those tests
+```
 
----
+The tests need the Neo4j container running (`codescan-neo4j-dev`, or `docker compose up -d`).
 
-## Required Skills — ALWAYS Invoke These
+## Skills
 
-These skills **must** be invoked when the relevant situation arises. Never skip them.
+Invoke the skill when its situation arises:
 
 | Situation | Skill |
 |-----------|-------|
@@ -24,84 +25,37 @@ These skills **must** be invoked when the relevant situation arises. Never skip 
 | Before completing a feature branch | `superpowers:requesting-code-review` |
 | Before claiming any task done | `superpowers:verification-before-completion` |
 | Working on UI / frontend | `frontend-design:frontend-design` |
-| After implementing — reviewing quality | `simplify` |
+| After implementing, reviewing quality | `simplify` |
 
----
-
-## Architecture
+## Layout and layers
 
 ```
-codescan/
-├── codescan_lib/         <- Core library (analyzer, stats, constants)
-├── codescan_mcp_server.py <- MCP server exposing graph query tools
-├── scanner.py            <- CLI entry point for scanning codebases
-├── docker-compose.yaml   <- Neo4j container setup
-├── tests/                <- Pytest test suite
-├── docs/                 <- GitHub Pages site
-└── scripts/              <- Utility scripts (hooks installer, repo setup)
+codescan_lib/            core library: analyzer, MCP tools (mcp_tools/), stats, constants
+codescan_mcp_server.py   MCP server exposing the graph query tools
+scanner.py               CLI that scans a codebase into Neo4j
+docker-compose.yaml      Neo4j container
+tests/                   pytest suite
+docs/                    GitHub Pages site and design notes; docs/lean/ holds graph-loop specs
+scripts/                 hook installer, repo setup
 ```
 
-### Layer Rules
-- `codescan_lib` must not import from `codescan_mcp_server.py` or `scanner.py`
-- `scanner.py` and `codescan_mcp_server.py` import from `codescan_lib` — not each other
-- No circular imports
+- `codescan_lib` never imports `codescan_mcp_server.py` or `scanner.py`; those two import from
+  `codescan_lib`, not from each other. No circular imports.
 
----
+## Code
 
-## Coding Conventions
+- At most 200 lines per file; extract a class, function or module before reaching it.
+- Type annotations on every function. Pure functions where possible.
+- No hardcoded strings: use constants from `codescan_lib`.
+- DRY, single responsibility, YAGNI; delete dead code.
+- Tests first. Test names describe behaviour (`should reject duplicate email`), one assertion per test.
+- Conventional Commits (`feat:`, `fix:`, `chore:`); the `commit-msg` hook enforces them.
 
-- All functions use type annotations
-- Functions are pure where possible — no hidden side effects
-- No hardcoded strings — use constants from `codescan_lib`
-- Follow PEP 8; enforced via `ruff`
-- Maximum 200 lines per file — extract modules when approaching the limit
+## Key files
 
----
-
-## Engineering Principles
-
-### File Size
-- **200-line maximum per file** — extract a class, function, or module when approaching the limit
-
-### DRY · SOLID · KISS · YAGNI
-- Extract shared logic into named utilities; never copy-paste
-- Single Responsibility: one class/function does one thing
-- Don't add features not yet needed
-- Delete dead code immediately
-
-### TDD
-- Write the failing test first, make it pass, then refactor
-- Test names describe behaviour: `"should reject duplicate email"`
-- One assertion per test — keep tests focused and readable
-
-### Commit hygiene
-- Follow Conventional Commits: `feat: ...` / `fix: ...` / `chore: ...`
-- The `commit-msg` hook enforces this automatically
-
----
-
-## Build Commands
-
-```bash
-ruff check .                # Lint / type-check
-pytest                      # Run tests
-ruff check . && pytest      # Full smoke check (used in CI and pre-commit)
-```
-
----
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `CLAUDE.md` | This file — project conventions and session startup |
-| `version.txt` | Semantic version (MAJOR.MINOR.PATCH) |
-| `.github/workflows/` | CI, release, Pages, and container automation |
-| `.githooks/` | Pre-commit and commit-msg hooks |
-| `scripts/install-hooks.sh` | One-time hook installer |
-| `scripts/setup-repo.sh` | One-time branch protection + repo settings |
-
----
+`version.txt` holds the semantic version. `.github/workflows/` runs CI, release, Pages and the container
+build. `.githooks/` holds the hooks; `scripts/install-hooks.sh` installs them once, and
+`scripts/setup-repo.sh` sets branch protection once.
 
 ## Autonomous builds (graph-loop)
 
@@ -111,12 +65,3 @@ graph-loop builds features from the specs in `docs/lean/`, one per pull request,
 - The spec is the settled brainstorm and plan: skip `superpowers:brainstorming` and
   `superpowers:writing-plans`, and never stop to ask a person. Questions go in the pull request.
 - The other rules in this file still apply: tests first, the 200-line limit, constants, layer rules.
-
----
-
-## Starting a New Session
-
-1. Read this file
-2. Run `ruff check . && pytest` to confirm everything passes
-3. Invoke `superpowers:brainstorming` before touching any feature
-4. Follow the Required Skills table — every skill is mandatory, not optional
