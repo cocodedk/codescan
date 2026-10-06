@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from .bindings import BindingScan, scan_function
-from .call_names import call_kind, callee_name, dotted_name, receiver_hints
+from .call_names import call_kind, call_site, callee_name, dotted_name, receiver_hints
 from .call_targets import BARE_CALL
 from .graph_batch import LINKS, GraphBatch
 from .stats_collector import StatsCollector
@@ -131,11 +131,11 @@ class CallsMixin(ast.NodeVisitor):
                 WITH called, row
                 {caller}
                 MERGE (caller)-[:CALLS {{line: row.line, args: row.args, kind: row.kind,
-                                      recv_class: row.recv_class, recv_module: row.recv_module,
+                                      recv_class: row.recv_class, recv_module: row.recv_module, site: row.site,
                                       skip_function: row.skip_function, skip_class: row.skip_class}}]->(called)""",
                 called_name=callee, caller_name=self.current_function,
                 caller_line=self.current_function_line, line=line, args=args, kind=kind,
-                recv_class=recv_class, recv_module=recv_module,
+                recv_class=recv_class, recv_module=recv_module, site=call_site(node),
                 skip_function=bare and self._skips_function(callee), skip_class=bare and callee in self.blocked_names,
             )
 

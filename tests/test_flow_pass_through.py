@@ -153,6 +153,42 @@ def test_should_not_let_a_class_body_import_hide_the_call_from_a_method(session,
     assert (rows["C.a"]["target"], rows["C.a"]["target_file"]) == ("b", "m.py")
 
 
+def test_should_not_list_a_forwarder_whose_outer_call_is_on_the_result_of_the_inner_one(session, tmp_path):
+    rows = listed(session, tmp_path, "def b(x):\n    return x\ndef a(x):\n    return b(x).b(x)\n")
+    assert "a" not in rows
+
+
+def test_should_tell_a_call_from_a_same_line_call_in_its_keyword(session, tmp_path):
+    rows = listed(session, tmp_path, "def b(k=None):\n    return k\ndef a(obj):\n    return obj.b(k=b())\n")
+    assert "a" not in rows
+
+
+def test_should_recognise_a_dotted_staticmethod_decorator(session, tmp_path):
+    source = "import builtins\ndef b(x):\n    return x\nclass C:\n    @builtins.staticmethod\n    def a(x):\n        return b(x)\n"
+    rows = listed(session, tmp_path, source)
+    assert rows["C.a"]["same_arguments"] is True
+
+
+def test_should_count_parameters_passed_by_their_own_name_as_the_same(session, tmp_path):
+    rows = listed(session, tmp_path, "def b(x):\n    return x\ndef a(x):\n    return b(x=x)\n")
+    assert rows["a"]["same_arguments"] is True
+
+
+def test_should_count_a_mix_of_positional_and_own_name_keywords_as_the_same(session, tmp_path):
+    rows = listed(session, tmp_path, "def b(x, y):\n    return x\ndef a(x, y):\n    return b(x, y=y)\n")
+    assert rows["a"]["same_arguments"] is True
+
+
+def test_should_flag_a_keyword_that_renames_a_parameter(session, tmp_path):
+    rows = listed(session, tmp_path, "def b(z):\n    return z\ndef a(x):\n    return b(z=x)\n")
+    assert rows["a"]["same_arguments"] is False
+
+
+def test_should_flag_a_parameter_passed_twice(session, tmp_path):
+    rows = listed(session, tmp_path, "def b(x, y):\n    return x\ndef a(x):\n    return b(x, x=x)\n")
+    assert rows["a"]["same_arguments"] is False
+
+
 def test_should_register_the_tool_with_the_server():
     import codescan_mcp_server  # noqa: F401  (importing registers every tool)
     from codescan_lib.mcp_tools.base import mcp

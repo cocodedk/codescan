@@ -23,7 +23,7 @@ def pass_through_functions() -> list[dict[str, Any]]:
     return q(
         """
         MATCH (f:Function)-[r:CALLS]->(t:Function)
-        WHERE r.line = f.forwards_line AND r.args = f.forwards_args AND f.forwards_to IS NOT NULL AND f.is_reference = false AND NOT f:Test
+        WHERE r.site = f.forwards_site AND f.forwards_to IS NOT NULL AND f.is_reference = false AND NOT f:Test
           AND t.is_reference = false AND split(t.name, '.')[-1] = f.forwards_to
           AND NOT (split(f.name, '.')[-1] STARTS WITH '__' AND f.name ENDS WITH '__')
         WITH f, t ORDER BY t.file, t.line
