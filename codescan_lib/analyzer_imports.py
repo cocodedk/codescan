@@ -1,8 +1,9 @@
 """Import tracking for CodeAnalyzer."""
 import ast
 
-from .bindings import ModuleScan
-from .constants import COLOR_IMPORTS, TYPE_CHECKING_MODULES, TYPE_CHECKING_NAME
+from .bindings import ModuleScan, runtime_bound_names, scan_function
+from .call_names import is_type_checking
+from .constants import COLOR_IMPORTS
 from .graph_batch import LINKS, GraphBatch
 from .stats_collector import StatsCollector
 from .utils import is_stdlib_module
@@ -20,6 +21,8 @@ class ImportsMixin(ast.NodeVisitor):
     external_names: set[str]  # names bound to the standard library or a third-party package
     import_bindings: dict[str, str]  # names bound to project code -> the dotted name they stand for
     project_roots: set[str]
+    blocked_names: set[str]  # names rebound in the scopes around the code being visited (see CallsMixin)
+    module_rebound: set[str]
     origins: dict[str, str]  # where each imported name comes from (see call_names.import_origins)
     type_checking_depth: int = 0  # above 0 while inside the body of an `if TYPE_CHECKING:`
 
@@ -48,7 +51,7 @@ class ImportsMixin(ast.NodeVisitor):
 
     def _walk_if(self, node: ast.If, visitor: ast.NodeVisitor) -> None:
         """Visit an `if` with `visitor`; imports under `if TYPE_CHECKING:` never run, so they add no module import."""
-        if not _is_type_checking(node.test, self.origins):
+        if not is_type_checking(node.test, self.origins, self.blocked_names):
             visitor.generic_visit(node)
             return
         visitor.visit(node.test)
@@ -63,14 +66,19 @@ class ImportsMixin(ast.NodeVisitor):
 
     def record_skipped_imports(self, node: ast.AST) -> None:
         """A skipped function (a dunder method) leaves no Function node, but its imports still make module imports."""
-        _SkippedImports(self).visit(node)
+        saved = self.blocked_names
+        self.blocked_names = saved | set(scan_function(node).names)  # a parameter or local may shadow TYPE_CHECKING
+        try:
+            _SkippedImports(self).visit(node)
+        finally:
+            self.blocked_names = saved
 
-    def record_exports(self, scan: ModuleScan) -> None:
+    def record_exports(self, scan: ModuleScan, tree: ast.Module) -> None:
         """Queue what other modules can learn about this file's names: `exports` (see call_targets.exported_functions)
         and `bound`, every name the module binds (a package binding `x` shadows its submodule `x`)."""
         self.batch.add(
             LINKS, "UNWIND $rows AS row MATCH (f:File {path: $file}) SET f.exports = row.exports, f.bound = row.bound",
-            exports=sorted(scan.clean_exports()), bound=sorted(scan.bound_names()),
+            exports=sorted(scan.clean_exports()), bound=sorted(runtime_bound_names(tree, self.origins, self.module_rebound)),
         )
 
     def _record_module_imports(self, node: ast.Import | ast.ImportFrom) -> None:
@@ -85,7 +93,7 @@ class ImportsMixin(ast.NodeVisitor):
             package = self._absolute_module(node)
             if node.level == 0 and is_stdlib_module(package):
                 return
-            refs = [package if alias.name == "*" else f"{package}:{alias.name}" for alias in node.names]
+            refs = [f"{package}:{alias.name}" for alias in node.names]
         else:
             refs = [alias.name for alias in node.names if not is_stdlib_module(alias.name)]
         for ref in refs:
@@ -143,13 +151,3 @@ class _SkippedImports(ast.NodeVisitor):
 
     def visit_If(self, node: ast.If) -> None:
         self.owner._walk_if(node, self)
-
-
-def _is_type_checking(test: ast.expr, origins: dict[str, str]) -> bool:
-    """`TYPE_CHECKING` as imported from `typing` (or `typing_extensions`), alone or as one `and` operand."""
-    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And):
-        return any(_is_type_checking(value, origins) for value in test.values)
-    if isinstance(test, ast.Name):
-        return origins.get(test.id, "") in {f"{m}.{TYPE_CHECKING_NAME}" for m in TYPE_CHECKING_MODULES}
-    return (isinstance(test, ast.Attribute) and test.attr == TYPE_CHECKING_NAME
-            and isinstance(test.value, ast.Name) and origins.get(test.value.id, "") in TYPE_CHECKING_MODULES)

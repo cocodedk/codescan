@@ -287,6 +287,59 @@ def test_should_not_double_the_edges_when_a_file_is_scanned_twice(session, tmp_p
     assert edges(session) == [("a.py", "b.py")]
 
 
+def test_should_not_let_a_package_import_itself_through_from_dot_import(session, tmp_path):
+    scan(session, tmp_path, {"pkg/__init__.py": "from . import x\n", "pkg/x.py": "import pkg\n"})
+    assert (edges(session), cycles()) == (
+        [("pkg/__init__.py", "pkg/x.py"), ("pkg/x.py", "pkg/__init__.py")], [["pkg/__init__.py", "pkg/x.py"]])
+
+
+def test_should_not_count_type_checking_shadowed_by_a_parameter(session, tmp_path):
+    source = "from typing import TYPE_CHECKING\ndef f(TYPE_CHECKING=True):\n    if TYPE_CHECKING:\n        import b\n"
+    scan(session, tmp_path, {"a.py": source, "b.py": "import a\n"})
+    assert cycles() == [["a.py", "b.py"]]
+
+
+def test_should_not_count_type_checking_shadowed_by_an_assignment_in_the_function(session, tmp_path):
+    source = "from typing import TYPE_CHECKING\ndef f():\n    TYPE_CHECKING = True\n    if TYPE_CHECKING:\n        import b\n"
+    scan(session, tmp_path, {"a.py": source, "b.py": "import a\n"})
+    assert cycles() == [["a.py", "b.py"]]
+
+
+def test_should_not_count_type_checking_shadowed_in_a_skipped_dunder_method(session, tmp_path):
+    source = ("from typing import TYPE_CHECKING\nclass A:\n    def __init__(self, TYPE_CHECKING=True):\n"
+              "        if TYPE_CHECKING:\n            import b\n")
+    scan(session, tmp_path, {"a.py": source, "b.py": "import a\n"})
+    assert cycles() == [["a.py", "b.py"]]
+
+
+def test_should_not_count_a_binding_under_type_checking_as_the_package_binding_it(session, tmp_path):
+    files = {"pkg/__init__.py": "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    x = 1\n",
+             "main.py": "from pkg import x\n", "pkg/x.py": "import main\n"}
+    scan(session, tmp_path, files)
+    assert cycles() == [["main.py", "pkg/x.py"]]
+
+
+def test_should_count_a_binding_in_the_else_of_type_checking_as_the_package_binding_it(session, tmp_path):
+    files = {"pkg/__init__.py": "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    pass\nelse:\n    x = 1\n",
+             "main.py": "from pkg import x\n", "pkg/x.py": "import main\n"}
+    scan(session, tmp_path, files)
+    assert cycles() == []
+
+
+def test_should_take_the_names_a_star_import_binds_as_bound_by_the_package(session, tmp_path):
+    files = {"pkg/__init__.py": "from .config import *\n", "pkg/config.py": "x = 1\n",
+             "main.py": "from pkg import x\n", "pkg/x.py": "import main\n"}
+    scan(session, tmp_path, files)
+    assert (("main.py", "pkg/__init__.py") in edges(session), cycles()) == (True, [])
+
+
+def test_should_import_the_submodule_when_the_star_import_does_not_bind_the_name(session, tmp_path):
+    files = {"pkg/__init__.py": "from .config import *\n", "pkg/config.py": "y = 1\n",
+             "main.py": "from pkg import x\n", "pkg/x.py": "import main\n"}
+    scan(session, tmp_path, files)
+    assert cycles() == [["main.py", "pkg/x.py"]]
+
+
 def test_should_keep_the_test_file_import_nodes(session, tmp_path):
     scan(session, tmp_path, {"tests/test_a.py": "import a\n\ndef test_x():\n    pass\n", "a.py": ""})
     imports = session.run("MATCH (i:Import) RETURN count(i) AS n").single()["n"]

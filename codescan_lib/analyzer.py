@@ -96,7 +96,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self.module_rebound = scan.untrusted()
         self.blocked_names = set(self.module_rebound)  # module-level calls trust what a function would
         self.module_unstable, self.deferred, self.origins = scan.unstable(), deferred_nodes(node), import_origins(node)
-        self.record_exports(scan)
+        self.record_exports(scan, node)
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
