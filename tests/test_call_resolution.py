@@ -5,6 +5,7 @@ from neo4j import GraphDatabase
 from codescan_lib.analysis import analyze_directory, analyze_file, finalize_graph
 from codescan_lib.constants import NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
 from codescan_lib.db_operations import clear_database
+from codescan_lib.mcp_tools.call_graph import callers, uncalled_functions
 from codescan_lib.stats_collector import StatsCollector
 
 
@@ -441,3 +442,137 @@ def test_should_resolve_a_module_alias_call_only_to_functions_of_that_modules_fi
     scan(session, tmp_path, files)
     edges = rows(session, "MATCH (:Function {name: 'f'})-[:CALLS]->(b:Function {is_reference: false}) RETURN b.name, b.file")
     assert edges == {("helper", "pkg/utils.py")}
+
+
+def instantiated(session):
+    return rows(session, "MATCH (a)-[:INSTANTIATES]->(c:Class) RETURN coalesce(a.name, a.path), c.name, c.file")
+
+
+def module_calls(session):
+    return rows(session, "MATCH (a:File)-[:CALLS]->(b:Function {is_reference: false}) RETURN a.path, b.name")
+
+
+FOO = "class Foo: pass\n"
+
+
+def test_should_link_a_constructor_call_to_the_class_in_another_file(session, tmp_path):
+    scan(session, tmp_path, {"lib.py": FOO, "m.py": "def f():\n    Foo()\n"})
+    assert instantiated(session) == {("f", "Foo", "lib.py")}
+
+
+def test_should_not_leave_a_placeholder_for_a_constructor_call_that_resolved(session, tmp_path):
+    scan(session, tmp_path, {"lib.py": FOO, "m.py": "def f():\n    Foo()\n"})
+    assert unresolved_calls(session) == set()
+
+
+def test_should_keep_a_constructor_call_unresolved_when_no_class_has_that_name(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def f():\n    Foo()\n"})
+    assert (("f", "Foo") in unresolved_calls(session), instantiated(session)) == (True, set())
+
+
+def test_should_keep_the_line_and_arguments_on_an_instantiates_edge(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "def f():\n    Foo(1, 2)\n"})
+    assert rows(session, "MATCH ()-[r:INSTANTIATES]->() RETURN r.line, r.args") == {(3, "1, 2")}
+
+
+def test_should_prefer_the_class_in_the_same_file(session, tmp_path):
+    scan(session, tmp_path, {"a.py": FOO, "m.py": FOO + "def f():\n    Foo()\n"})
+    assert instantiated(session) == {("f", "Foo", "m.py")}
+
+
+def test_should_leave_a_constructor_call_unresolved_when_two_files_define_the_class(session, tmp_path):
+    scan(session, tmp_path, {"a.py": FOO, "b.py": FOO, "m.py": "def f():\n    Foo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_not_link_a_constructor_call_to_a_class_nested_in_a_function(session, tmp_path):
+    scan(session, tmp_path, {"a.py": "def g():\n    class Foo: pass\n", "m.py": "def f():\n    Foo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_leave_a_name_unresolved_when_both_a_class_and_a_function_could_be_meant(session, tmp_path):
+    scan(session, tmp_path, {"a.py": FOO, "b.py": "def Foo(): pass\n", "m.py": "def f():\n    Foo()\n"})
+    assert (instantiated(session), module_calls(session), ("f", "Foo") in unresolved_calls(session)) == (set(), set(), True)
+
+
+def test_should_link_a_constructor_call_through_a_from_import(session, tmp_path):
+    scan(session, tmp_path, {"lib.py": FOO, "m.py": "from lib import Foo\ndef f():\n    Foo()\n"})
+    assert instantiated(session) == {("f", "Foo", "lib.py")}
+
+
+def test_should_not_link_a_constructor_call_through_an_import_of_another_module(session, tmp_path):
+    files = {"a.py": FOO, "lib.py": "x = 1\n", "m.py": "from lib import Foo\ndef f():\n    Foo()\n"}
+    scan(session, tmp_path, files)
+    assert instantiated(session) == set()
+
+
+def test_should_link_a_constructor_call_through_a_module_alias(session, tmp_path):
+    scan(session, tmp_path, {"models.py": FOO, "m.py": "import models\ndef f():\n    models.Foo()\n"})
+    assert instantiated(session) == {("f", "Foo", "models.py")}
+
+
+def test_should_not_link_a_constructor_call_through_another_modules_class(session, tmp_path):
+    files = {"a.py": FOO, "models.py": "x = 1\n", "m.py": "import models\ndef f():\n    models.Foo()\n"}
+    scan(session, tmp_path, files)
+    assert instantiated(session) == set()
+
+
+def test_should_not_link_a_constructor_call_on_an_instance_attribute(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "def f(x):\n    x.Foo()\n"})
+    assert instantiated(session) == set()
+
+
+def test_should_record_a_module_level_call_with_the_file_as_caller(session, tmp_path):
+    scan(session, tmp_path, {"m.py": 'def main(): pass\nif __name__ == "__main__":\n    main()\n'})
+    assert module_calls(session) == {("m.py", "main")}
+
+
+def test_should_not_list_a_function_called_only_from_module_level_as_uncalled(session, tmp_path):
+    scan(session, tmp_path, {"m.py": 'def main(): pass\nif __name__ == "__main__":\n    main()\n'})
+    assert "main" not in {r["name"] for r in uncalled_functions()}
+
+
+def test_should_record_an_assigned_module_level_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nx = helper()\n"})
+    assert module_calls(session) == {("m.py", "helper")}
+
+
+def test_should_record_a_module_level_constructor_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": FOO + "x = Foo()\n"})
+    assert instantiated(session) == {("m.py", "Foo", "m.py")}
+
+
+def test_should_record_a_decorator_call_as_a_module_level_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def route(p): pass\n@route('/')\ndef view(): pass\n"})
+    assert module_calls(session) == {("m.py", "route")}
+
+
+def test_should_record_a_class_body_call_as_a_module_level_call(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def make(): pass\nclass A:\n    x = make()\n"})
+    assert module_calls(session) == {("m.py", "make")}
+
+
+def test_should_keep_the_call_kind_on_a_module_level_edge(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nhelper()\n"})
+    assert rows(session, "MATCH (:File)-[r:CALLS]->(:Function) RETURN r.kind, r.line, r.args") == {("bare", 2, "")}
+
+
+def test_should_resolve_a_module_level_call_through_an_import(session, tmp_path):
+    scan(session, tmp_path, {"lib.py": "def go(): pass\n", "m.py": "from lib import go\ngo()\n"})
+    assert module_calls(session) == {("m.py", "go")}
+
+
+def test_should_leave_an_ambiguous_module_level_call_unresolved(session, tmp_path):
+    scan(session, tmp_path, {"a.py": "def go(): pass\n", "b.py": "def go(): pass\n", "m.py": "go()\n"})
+    assert (module_calls(session), rows(session, "MATCH (:File)-[:CALLS]->(r:ReferenceFunction) RETURN r.name")) == (
+        set(), {("go",)})
+
+
+def test_should_not_resolve_a_module_level_self_call_to_a_method(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "class A:\n    def run(self): pass\n    x = self.run()\n"})
+    assert module_calls(session) == set()
+
+
+def test_should_return_a_file_caller_by_its_path(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def helper(): pass\nhelper()\n"})
+    assert {r["caller"] for r in callers("helper")} == {"m.py"}

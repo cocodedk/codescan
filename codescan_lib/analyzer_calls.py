@@ -3,7 +3,7 @@ import ast
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from .bindings import scan_function
+from .bindings import BindingScan, scan_function
 from .call_names import call_kind, callee_name, dotted_name, receiver_hints
 from .graph_batch import LINKS, GraphBatch
 from .stats_collector import StatsCollector
@@ -50,6 +50,19 @@ class CallsMixin(ast.NodeVisitor):
         finally:
             self.blocked_names, self.enclosing_bound, self.sole_bindings, self.instances = saved
 
+    @contextmanager
+    def _class_bindings(self, node: ast.ClassDef) -> Iterator[None]:
+        """A call in a class body outside its methods never trusts a name the class body binds."""
+        scan = BindingScan()
+        for statement in node.body:
+            scan.visit(statement)
+        saved = self.blocked_names
+        self.blocked_names = saved | scan.names.keys() | scan.imports.keys()
+        try:
+            yield
+        finally:
+            self.blocked_names = saved
+
     def visit_Assign(self, node: ast.Assign) -> None:
         """Remember `x = Foo()` when it is the function's only binding of `x` (and `x` is a function local)."""
         super().visit_Assign(node)  # type: ignore[misc]
@@ -65,11 +78,11 @@ class CallsMixin(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         callee = callee_name(node.func, self.external_names)
-        if callee and self.current_function:
+        if callee:
             line = getattr(node, "lineno", -1)
             args = ", ".join(ast.unparse(arg) for arg in node.args)
             self.stats.register_call(
-                caller=self.current_function,
+                caller=self.current_function or self.file_path,
                 callee=callee,
                 file_path=self.file_path,
                 line=line,
@@ -78,16 +91,21 @@ class CallsMixin(ast.NodeVisitor):
             recv_class, recv_module = receiver_hints(
                 node.func, self.import_bindings, self.instances, self.blocked_names, line
             )
-            # One placeholder per callee name; resolve_calls() re-points the edge at the real definition
+            # One placeholder per callee name; resolve_calls() re-points the edge at the real definition.
+            # Code outside every function has the file as caller.
+            caller = (
+                "MATCH (caller:Function {name: row.caller_name, file: $file, line: row.caller_line, is_reference: false})"
+                if self.current_function else "MATCH (caller:File {path: $file})"
+            )
             self.batch.add(
                 LINKS,
-                """UNWIND $rows AS row
-                MERGE (called:Function:ReferenceFunction {name: row.called_name, is_reference: true})
+                f"""UNWIND $rows AS row
+                MERGE (called:Function:ReferenceFunction {{name: row.called_name, is_reference: true}})
                 ON CREATE SET called.file = $file, called.line = row.line, called.end_line = -1, called.length = 0
                 WITH called, row
-                MATCH (caller:Function {name: row.caller_name, file: $file, line: row.caller_line, is_reference: false})
-                MERGE (caller)-[:CALLS {line: row.line, args: row.args, kind: row.kind,
-                                      recv_class: row.recv_class, recv_module: row.recv_module}]->(called)""",
+                {caller}
+                MERGE (caller)-[:CALLS {{line: row.line, args: row.args, kind: row.kind,
+                                      recv_class: row.recv_class, recv_module: row.recv_module}}]->(called)""",
                 called_name=callee, caller_name=self.current_function,
                 caller_line=self.current_function_line, line=line, args=args, kind=call_kind(node.func),
                 recv_class=recv_class, recv_module=recv_module,

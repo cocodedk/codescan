@@ -87,6 +87,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
     def visit_Module(self, node: ast.Module) -> None:
         scan = scan_module(node)
         self.module_rebound = scan.rebound()
+        self.blocked_names = set(self.module_rebound)  # module-level calls trust what a function would
         self.batch.add(  # which names another module can import with certainty (see call_targets.exported_functions)
             LINKS, "UNWIND $rows AS row MATCH (f:File {path: $file}) SET f.exports = row.exports",
             exports=sorted(scan.clean_exports()),
@@ -105,8 +106,9 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self.batch.add(
             NODES,
             f"UNWIND $rows AS row MERGE (c{self._labels('Class')} "
-            "{name: row.name, file: $file, line: row.line, end_line: row.end_line, length: row.length})",
-            name=node.name, line=line, end_line=end_line, length=length,
+            "{name: row.name, file: $file, line: row.line, end_line: row.end_line, length: row.length, "
+            "nested: row.nested})",
+            name=node.name, line=line, end_line=end_line, length=length, nested=self.current_scope != "module",
         )
 
         # Decorators and base classes run in the enclosing scope; the body in the class's
@@ -116,7 +118,8 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
             self.class_outer_imports[-1] if self.current_scope == "class"
             else (set(self.external_names), dict(self.import_bindings))
         )
-        with self._scope("class", node.name, self.current_function, self.current_function_line):
+        with self._scope("class", node.name, self.current_function, self.current_function_line), \
+                self._class_bindings(node):
             self.class_outer_imports.append(outside)
             try:
                 self._visit_all(node.body)
