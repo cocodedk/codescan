@@ -63,8 +63,6 @@ def test_tool_imports():
         untested_functions,
     )
 
-    # Import main MCP server - should import all tools
-
     # Verify all expected functions are callable
     assert callable(get_connection_status_tool)
     assert callable(graph_summary)
