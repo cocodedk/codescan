@@ -118,13 +118,18 @@ def get_test_detection_config() -> dict[str, list[str]]:
 @mcp.tool()
 def untested_functions(exclude_private: bool = True) -> list[dict[str, Any]]:
     """
-    List functions without tests.
+    List defined functions that no test is known to exercise.
+
+    A test links to a function only through a certain call, its name or its class, so a method a
+    test calls through a parameter or fixture (`runner.run()`) shows up here even if it is tested.
+    `possible_tests` counts unresolved calls from tests that use the same name: above 0, the
+    function may well be tested. Treat every row as a lead to check, not proof.
 
     Args:
         exclude_private: Whether to exclude private functions (starting with _)
 
     Returns:
-        List of functions that don't have any tests covering them
+        Rows of name, file, line and possible_tests.
     """
     where_clause = "WHERE NOT f:TestFunction AND f.is_reference = false AND NOT (:TestFunction)-[:TESTS]->(f)"
 
@@ -134,14 +139,19 @@ def untested_functions(exclude_private: bool = True) -> list[dict[str, Any]]:
     return q(f"""
         MATCH (f:Function)
         {where_clause}
-        RETURN f.name AS name, f.file AS file, f.line AS line
+        OPTIONAL MATCH (:TestFunction)-[r:CALLS]->(:ReferenceFunction {{name: split(f.name, '.')[-1]}})
+        WITH f, count(r) AS possible_tests
+        RETURN f.name AS name, f.file AS file, f.line AS line, possible_tests
         ORDER BY f.file, f.line
     """)
 
 @mcp.tool()
 def get_test_coverage_ratio() -> list[dict[str, Any]]:
     """
-    Get test coverage ratio.
+    Get the share of defined functions that some test is known to exercise.
+
+    A lower bound: tests that reach a function only through a parameter or fixture are not
+    counted (see untested_functions and its possible_tests column).
 
     Returns:
         Overall test coverage ratio and counts

@@ -56,17 +56,24 @@ def unresolved_references() -> list[dict[str, Any]]:
 @mcp.tool()
 def uncalled_functions() -> list[dict[str, Any]]:
     """
-    List all user-defined functions that are not called by any other function.
+    List defined functions that no call in the graph is known to reach (dead-code candidates).
+
+    CodeScan links a call only when it is certain which function runs, so a method called through
+    a parameter or another object (`session.run()`) has no caller here even if it is used.
+    `possible_callers` counts the calls CodeScan could not resolve that use the same name: above 0,
+    the function may well be in use. Treat every row as a lead to check, not proof of dead code.
 
     Returns:
-        List of functions (name, file, line, end_line) that have no incoming CALLS relationships.
+        Rows of name, file, line, end_line and possible_callers.
     """
     return q(
         """
         MATCH (f:Function)
         WHERE coalesce(f.is_reference, false) = false
-          AND NOT (():Function)-[:CALLS]->(f)
-        RETURN f.name AS name, f.file AS file, f.line AS line, f.end_line AS end_line
+          AND NOT ()-[:CALLS]->(f)
+        OPTIONAL MATCH ()-[r:CALLS]->(:ReferenceFunction {name: split(f.name, '.')[-1]})
+        WITH f, count(r) AS possible_callers
+        RETURN f.name AS name, f.file AS file, f.line AS line, f.end_line AS end_line, possible_callers
         ORDER BY f.file, f.line
         """
     )
