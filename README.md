@@ -53,7 +53,7 @@ CodeScan uses a `.env` file for configuration. Follow these steps to set it up:
 Instead of using the `.env` file, you can also specify the project directory directly when running the scanner:
 
 ```bash
-python scanner.py --project-dir /path/to/your/project
+uv run codescan --project-dir /path/to/your/project
 ```
 
 ## Architecture
@@ -104,9 +104,9 @@ python scanner.py --project-dir /path/to/your/project
 #### Prerequisites
 - Python 3.10+ (`mcp` and `neo4j` both require it; CI runs 3.12)
 - Neo4j 5.x (Docker recommended)
-- Install dependencies:
+- [uv](https://docs.astral.sh/uv/getting-started/installation/), then install the locked dependencies:
   ```bash
-  pip install -r requirements.txt
+  uv sync
   ```
 
 #### Running Neo4j
@@ -120,7 +120,7 @@ python scanner.py --project-dir /path/to/your/project
 - Ensure your `.env` file is configured (see "Setting Up Your Environment" section).
 - Run the scanner:
   ```bash
-  python scanner.py
+  uv run codescan
   ```
 - The script will:
   - Clear the Neo4j database
@@ -131,10 +131,10 @@ python scanner.py --project-dir /path/to/your/project
 Control the verbosity of scanner output:
 ```bash
 # Minimal output (only errors)
-python scanner.py --quiet
+uv run codescan --quiet
 
 # Detailed output showing all elements found
-python scanner.py --verbose
+uv run codescan --verbose
 ```
 
 #### Visualizing in Neo4j Browser

@@ -11,8 +11,9 @@ from codescan_lib.mcp_tools.core import *
 from codescan_lib.mcp_tools.file_tools import *
 from codescan_lib.mcp_tools.test_tools import *
 
-# --- Main Execution ---
-if __name__ == "__main__":
+
+def main() -> None:
+    """Serve the CodeScan tools over stdio until the client disconnects."""
     logger.info("Starting CodeScan MCP Server (MCPServer, stdio)")
     logger.info(f"Database connection status: {'Success' if initial_connection_status['success'] else 'Failed'}")
     if not initial_connection_status['success']:
@@ -27,3 +28,7 @@ if __name__ == "__main__":
         if driver:
             driver.close()
             logger.info("Neo4j driver closed")
+
+
+if __name__ == "__main__":
+    main()

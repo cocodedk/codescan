@@ -13,3 +13,4 @@ __pycache__/
 # Neo4j data (if you ever mount it locally)
 data/
 logs/
+*.egg-info/
