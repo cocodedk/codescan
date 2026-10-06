@@ -78,3 +78,18 @@ def scan_function(node: ast.FunctionDef | ast.AsyncFunctionDef) -> BindingScan:
     for statement in node.body:
         scan.visit(statement)
     return scan
+
+
+class ModuleScan(BindingScan):
+    """Binding sites of a module's own scope: a class body binds only the class's name here."""
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.names[node.name] += 1
+
+
+def rebound_in_module(tree: ast.Module) -> set[str]:
+    """Names the module binds more than once, imports included: which binding a call sees is undecided."""
+    scan = ModuleScan()
+    for statement in tree.body:
+        scan.visit(statement)
+    return {name for name in scan.names.keys() | scan.imports.keys() if scan.names[name] + scan.imports[name] > 1}

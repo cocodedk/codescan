@@ -20,6 +20,7 @@ class CallsMixin(ast.NodeVisitor):
     external_names: set[str]
     import_bindings: dict[str, str]
     current_scope: str
+    module_rebound: set[str]  # names the module binds more than once: never trusted as a receiver or an import
     blocked_names: set[str]  # names this call's function, or one around it, rebinds: never trusted as a receiver
     enclosing_bound: set[str]  # every name the functions around the one being visited bind, imports included
     sole_bindings: set[str]  # names this function binds exactly once, by something other than an import
@@ -40,7 +41,7 @@ class CallsMixin(ast.NodeVisitor):
             *(name for name, count in scan.imports.items() if count > 1),
             *(scan.imports.keys() & imported_outside),
         }
-        self.blocked_names = self.enclosing_bound | rebound
+        self.blocked_names = self.enclosing_bound | rebound | self.module_rebound
         self.enclosing_bound = self.enclosing_bound | scan.names.keys() | scan.imports.keys()
         self.sole_bindings = {name for name, count in scan.names.items() if count == 1 and name not in scan.imports}
         self.instances = {}

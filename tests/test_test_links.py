@@ -96,3 +96,33 @@ def test_should_count_only_defined_production_functions_in_the_coverage_ratio(se
     with patch("codescan_lib.mcp_tools.test_tools.q", lambda cypher, **p: [r.data() for r in session.run(cypher, **p)]):
         result = get_test_coverage_ratio()
     assert (result[0]["total_functions"], result[0]["tested_functions"]) == (2, 1)
+
+
+def linked_files(session):
+    return rows(session, "MATCH (:TestFunction)-[:TESTS]->(p:Function) RETURN p.file")
+
+
+def test_should_not_resolve_an_imported_name_the_test_module_also_defines(session, tmp_path):
+    test = "from pkg.a import compute\ndef compute(): return 2\ndef test_it(): assert compute() == 2\n"
+    scan(session, tmp_path, {"pkg/a.py": "def compute(): return 1\n", "tests/test_x.py": test})
+    assert linked_files(session) == set()
+
+
+def test_should_not_let_an_import_in_a_class_body_reach_its_methods(session, tmp_path):
+    test = (
+        "from pkg.b import compute\nclass TestCalls:\n    from pkg.a import compute\n"
+        "    def test_it(self): assert compute() == 2\n"
+    )
+    files = {"pkg/a.py": "def compute(): pass\n", "pkg/b.py": "def compute(): pass\n", "tests/test_x.py": test}
+    scan(session, tmp_path, files)
+    assert linked_files(session) == {("pkg/b.py",)}
+
+
+def test_should_resolve_an_import_to_the_package_when_a_module_has_the_same_name(session, tmp_path):
+    files = {
+        "pkg/a.py": "def compute(): pass\n",
+        "pkg/a/__init__.py": "def compute(): pass\n",
+        "tests/test_x.py": "from pkg.a import compute\ndef test_it():\n    compute()\n",
+    }
+    scan(session, tmp_path, files)
+    assert linked_files(session) == {("pkg/a/__init__.py",)}

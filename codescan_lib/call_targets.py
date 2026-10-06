@@ -51,6 +51,12 @@ def bare_targets(caller: Definition, candidates: list[Definition], by_position: 
     return same_file or (module_level if len({d.file for d in module_level}) == 1 else [])
 
 
+def module_functions(candidates: list[Definition], module: str) -> list[Definition]:
+    """Module-level functions of a module; when `pkg/a.py` and `pkg/a/__init__.py` both exist, the package wins."""
+    found = [d for d in candidates if not is_method(d) and d.parent_line == NOT_NESTED and module_of(d.file) == module]
+    return [d for d in found if Path(d.file).name == "__init__.py"] or found
+
+
 def imported_targets(callee: str, candidates: list[Definition], imported: str) -> list[Definition]:
     """Module-level functions a bare name reaches when the file imported it as `imported` (`pkg.a.compute`).
 
@@ -59,7 +65,7 @@ def imported_targets(callee: str, candidates: list[Definition], imported: str) -
     module, _, name = imported.rpartition(".")
     if name != callee:
         return []
-    return [d for d in candidates if not is_method(d) and d.parent_line == NOT_NESTED and module_of(d.file) == module]
+    return module_functions(candidates, module)
 
 
 def self_targets(caller: Definition, callee: str, candidates: list[Definition]) -> list[Definition]:
@@ -88,7 +94,7 @@ def receiver_targets(
         return narrowest(methods, tiers)
     if not recv_module:
         return []
-    return [d for d in candidates if not is_method(d) and d.parent_line == NOT_NESTED and module_of(d.file) == recv_module]
+    return module_functions(candidates, recv_module)
 
 
 def choose_targets(

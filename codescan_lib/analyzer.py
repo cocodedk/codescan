@@ -6,6 +6,7 @@ from typing import Any
 from .analyzer_calls import CallsMixin
 from .analyzer_constants import ConstantsMixin
 from .analyzer_imports import ImportsMixin
+from .bindings import rebound_in_module
 from .constants import COLOR_CLASS_CONTAINS
 from .coverage_links import link_tests
 from .graph_batch import LINKS, NODES, GraphBatch
@@ -36,7 +37,9 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self.project_roots: set[str] = project_roots or set()  # top-level packages and modules of the scan
         self.external_names: set[str] = set()  # names this file imported from outside the project
         self.import_bindings: dict[str, str] = {}  # names this file imported from the project -> dotted name
-        self.blocked_names: set[str] = set()  # see CallsMixin
+        self.module_rebound: set[str] = set()  # see CallsMixin
+        self.class_outer_imports: list[tuple[set[str], dict[str, str]]] = []  # imports outside each open class
+        self.blocked_names: set[str] = set()
         self.enclosing_bound: set[str] = set()
         self.sole_bindings: set[str] = set()
         self.instances: dict[str, tuple[str, int]] = {}
@@ -47,11 +50,19 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         )
 
     @contextmanager
-    def _scope(self, scope: str, cls: str | None, func: str | None, func_line: int) -> Iterator[None]:
-        """Enter a class or function body, restoring the enclosing scope on exit."""
+    def _scope(
+        self, scope: str, cls: str | None, func: str | None, func_line: int,
+        imports: tuple[set[str], dict[str, str]] | None = None,
+    ) -> Iterator[None]:
+        """Enter a class or function body, restoring the enclosing scope on exit.
+
+        `imports` are the names the body starts with when it is not the current ones (a method does not
+        see the imports of the class body it is written in).
+        """
         saved = (self.current_scope, self.current_class, self.current_function, self.current_function_line)
         outer_imports = (self.external_names, self.import_bindings)
-        self.external_names, self.import_bindings = set(self.external_names), dict(self.import_bindings)
+        start = imports or outer_imports
+        self.external_names, self.import_bindings = set(start[0]), dict(start[1])
         self.current_scope, self.current_class = scope, cls
         self.current_function, self.current_function_line = func, func_line
         try:
@@ -73,6 +84,10 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         for child in nodes:
             self.visit(child)
 
+    def visit_Module(self, node: ast.Module) -> None:
+        self.module_rebound = rebound_in_module(node)
+        self.generic_visit(node)
+
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         line, end_line, length = node_span(node)
         self.stats.register_class(
@@ -91,8 +106,13 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
 
         # Decorators and base classes run in the enclosing scope; the body in the class's
         self._visit_all([*node.decorator_list, *node.bases, *node.keywords])
+        outside = (set(self.external_names), dict(self.import_bindings))
         with self._scope("class", node.name, self.current_function, self.current_function_line):
-            self._visit_all(node.body)
+            self.class_outer_imports.append(outside)
+            try:
+                self._visit_all(node.body)
+            finally:
+                self.class_outer_imports.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         name = node.name
@@ -140,7 +160,8 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self._visit_all([*node.decorator_list, node.args])
         if node.returns:
             self.visit(node.returns)
-        with self._scope("function", self.current_class, full_name, line), self._bindings(node):
+        outside = self.class_outer_imports[-1] if owner else None
+        with self._scope("function", self.current_class, full_name, line, outside), self._bindings(node):
             self._visit_all(node.body)
 
     visit_AsyncFunctionDef = visit_FunctionDef
