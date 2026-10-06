@@ -10,6 +10,7 @@ from .bindings import scan_module
 from .call_names import deferred_nodes, import_origins, keeps_class
 from .constants import COLOR_CLASS_CONTAINS
 from .coverage_links import link_tests
+from .forwarders import mark_forwarder
 from .graph_batch import LINKS, NODES, GraphBatch
 from .stats_collector import StatsCollector
 from .utils import is_example_file, node_span
@@ -181,6 +182,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
             self.visit(node.returns)
         outside = self.class_outer_imports[-1] if owner else None
         with self._scope("function", self.current_class, full_name, line, outside), self._bindings(node):
+            mark_forwarder(self.batch, node, full_name, line, owner is not None, self.external_names)
             self._visit_all(node.body)
 
     visit_AsyncFunctionDef = visit_FunctionDef

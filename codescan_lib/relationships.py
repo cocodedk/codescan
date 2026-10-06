@@ -23,7 +23,7 @@ REWRITE_CALLS = """UNWIND $rows AS row
     MATCH (caller) WHERE elementId(caller) = row.caller_id
     MATCH ()-[old:CALLS]->() WHERE elementId(old) = row.edge_id
     MATCH (target:Function {name: row.target, file: row.target_file, line: row.target_line, is_reference: false})
-    MERGE (caller)-[:CALLS {color: $color, line: row.line, args: row.args, kind: row.kind}]->(target)
+    MERGE (caller)-[:CALLS {color: $color, line: row.line, args: row.args, kind: row.kind, site: row.site}]->(target)
     DELETE old"""
 REWRITE_INSTANTIATES = """UNWIND $rows AS row
     MATCH (caller) WHERE elementId(caller) = row.caller_id
@@ -77,7 +77,7 @@ def resolve_calls(session: Any) -> None:
         MATCH (caller)-[r:CALLS]->(ref:ReferenceFunction) WHERE caller:File OR caller.is_reference = false
         RETURN elementId(caller) AS caller_id, elementId(r) AS edge_id, ref.name AS callee,
                coalesce(caller.file, caller.path) AS caller_file, caller.line AS caller_line,
-               r.line AS line, r.args AS args, coalesce(r.kind, 'attr') AS kind,
+               r.line AS line, r.args AS args, r.site AS site, coalesce(r.kind, 'attr') AS kind,
                coalesce(r.recv_class, '') AS recv_class, coalesce(r.recv_module, '') AS recv_module,
                coalesce(r.skip_function, false) AS skip_function, coalesce(r.skip_class, false) AS skip_class
     """):
@@ -90,7 +90,7 @@ def resolve_calls(session: Any) -> None:
         built = [] if row["skip_class"] else class_targets(
             caller.file, row["callee"], classes.get(row["callee"], []), row["kind"], row["recv_module"], exporters)
         functions, built = settle(functions, built, caller.file)
-        fields = {k: row[k] for k in ("caller_id", "edge_id", "line", "args", "kind")}
+        fields = {k: row[k] for k in ("caller_id", "edge_id", "line", "args", "kind", "site")}
         for query, targets in ((REWRITE_CALLS, functions), (REWRITE_INSTANTIATES, built)):
             for t in targets:
                 batch.add(LINKS, query, COLOR_CALLS, **fields, target=t.name, target_file=t.file, target_line=t.line)

@@ -256,3 +256,18 @@ Runs `scanner.py` to re-analyze the codebase and repopulate the Neo4j database.
   "error": null
 }
 ```
+
+---
+
+### 17. `pass_through_functions`
+**Description:**
+Lists functions whose whole body is one call to another defined function (a layer that can usually be cut). Forwarders whose call stayed unresolved are not listed. `same_arguments` is true when the call passes exactly the forwarder's own parameters, in order, by name.
+
+**Parameters:** None
+
+**Sample Output:**
+```json
+[
+  {"name": "a", "file": "src/foo.py", "line": 3, "target": "b", "target_file": "src/foo.py", "callers": 2, "same_arguments": true}
+]
+```

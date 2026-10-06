@@ -20,6 +20,11 @@ def callee_name(func: ast.expr, external_names: set[str]) -> str | None:
     return None
 
 
+def call_site(node: ast.Call) -> str:
+    """Where the call sits in the file, down to its columns: tells it from calls nested in it or around it."""
+    return f"{node.lineno}:{node.col_offset}-{node.end_lineno}:{node.end_col_offset}"
+
+
 def call_kind(func: ast.expr) -> str:
     """`name()` is bare, `self.name()` or `cls.name()` is a self call, anything else an attribute call."""
     if isinstance(func, ast.Name):
