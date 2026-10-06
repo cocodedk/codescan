@@ -333,3 +333,59 @@ def test_should_resolve_calls_on_a_relatively_imported_module(session, tmp_path)
              "pkg/m.py": "from . import utils\ndef f():\n    utils.helper()\n"}
     scan(session, tmp_path, files)
     assert ("f", "helper") in resolved_calls(session)
+
+
+def test_should_keep_an_unresolved_call_on_the_same_line_as_a_resolved_one(session, tmp_path):
+    scan(session, tmp_path, {"m.py": RUNNER + "def f(session):\n    Runner.run(); session.run()\n"})
+    assert (("f", "Runner.run") in resolved_calls(session), ("f", "run") in unresolved_calls(session)) == (True, True)
+
+
+def test_should_not_resolve_calls_on_a_parameter_named_like_a_module(session, tmp_path):
+    scan(session, tmp_path, {"utils.py": "def helper(): pass\n", "m.py": "def f(utils):\n    utils.helper()\n"})
+    assert ("f", "helper") in unresolved_calls(session)
+
+
+def test_should_resolve_a_class_call_only_in_the_imported_module(session, tmp_path):
+    files = {"b.py": "class Runner: pass\n", "a.py": RUNNER, "m.py": "from b import Runner\ndef f():\n    Runner.run()\n"}
+    scan(session, tmp_path, files)
+    assert ("f", "run") in unresolved_calls(session)
+
+
+def test_should_keep_a_function_local_import_inside_that_function(session, tmp_path):
+    source = "def first():\n    import requests as service\ndef second(service):\n    service.get()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("second", "get") in unresolved_calls(session)
+
+
+def test_should_resolve_an_instance_built_by_a_qualified_class(session, tmp_path):
+    files = {"models.py": RUNNER, "m.py": RUNNER + "import models\ndef f():\n    x = models.Runner()\n    x.run()\n"}
+    scan(session, tmp_path, files)
+    assert rows(session, "MATCH (:Function {name: 'f'})-[:CALLS]->(b:Function {is_reference: false}) RETURN b.file") == {("models.py",)}
+
+
+def test_should_resolve_an_instance_built_by_an_aliased_import(session, tmp_path):
+    files = {"models.py": RUNNER, "m.py": "from models import Runner as R\ndef f():\n    x = R()\n    x.run()\n"}
+    scan(session, tmp_path, files)
+    assert ("f", "Runner.run") in resolved_calls(session)
+
+
+@pytest.mark.parametrize("rebinding", [
+    "x, = other", "x += other", "for x in other: pass", "with other as x: pass", "(x := other)", "del x",
+])
+def test_should_forget_an_instance_when_its_name_is_rebound(session, tmp_path, rebinding):
+    source = RUNNER + f"def f(other):\n    x = Runner()\n    {rebinding}\n    x.run()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("f", "Runner.run") not in resolved_calls(session)
+
+
+def test_should_read_the_assigned_value_before_rebinding_its_name(session, tmp_path):
+    source = ("class A:\n    def run(self): pass\nclass B:\n    def run(self): pass\n"
+              "def f():\n    x = A()\n    x = B(x.run())\n")
+    scan(session, tmp_path, {"m.py": source})
+    assert {t for c, t in resolved_calls(session) if c == "f"} == {"A.run"}
+
+
+def test_should_link_an_imported_call_to_every_overload_in_the_other_file(session, tmp_path):
+    files = {"lib.py": "def f(a): pass\ndef f(a, b=1): pass\n", "m.py": "from lib import f\ndef g():\n    f(1)\n"}
+    scan(session, tmp_path, files)
+    assert rows(session, "MATCH (:Function {name: 'g'})-[:CALLS]->(b:Function) RETURN b.line") == {(1,), (2,)}

@@ -29,23 +29,41 @@ def call_kind(func: ast.expr) -> str:
     return SELF_CALL if is_self else ATTR_CALL
 
 
-def receiver_hint(func: ast.expr, imports: dict[str, str], instances: dict[str, str]) -> str:
-    """Dotted name of the class or module an attribute call's receiver may be, or "" when it is unknown.
+def _root(expr: ast.expr) -> ast.Name | None:
+    while isinstance(expr, ast.Attribute):
+        expr = expr.value
+    return expr if isinstance(expr, ast.Name) and expr.id not in SELF_NAMES else None
 
-    `Foo.run()` gives "Foo", `x.run()` after `x = Foo()` gives "Foo", and `utils.run()` after
-    `import pkg.utils as utils` gives "pkg.utils". A parameter, an attribute or a call result gives "".
+
+def dotted_name(expr: ast.expr, imports: dict[str, str]) -> str:
+    """Dotted name `expr` stands for, its first name resolved through the file's project imports.
+
+    An unimported name stands for itself (a class defined in this file), but an attribute chain on one
+    is unknown: "" is returned for it, and for `self`, `cls` and anything that is not a name chain.
+    """
+    root = _root(expr)
+    if root is None:
+        return ""
+    chain: list[str] = []
+    while isinstance(expr, ast.Attribute):
+        chain.insert(0, expr.attr)
+        expr = expr.value
+    if root.id in imports:
+        return ".".join([imports[root.id], *chain])
+    return "" if chain else root.id
+
+
+def receiver_hints(func: ast.expr, imports: dict[str, str], instances: dict[str, str]) -> tuple[str, str]:
+    """The class and the module an attribute call's receiver may be, "" for each that is unknown.
+
+    `Foo.run()` and `x.run()` after `x = Foo()` name a class; `utils.run()` after `import pkg.utils as utils`
+    names the class "pkg.utils" or the module "pkg.utils". A parameter, an attribute or a call result names none.
     """
     if not isinstance(func, ast.Attribute):
-        return ""
-    parts: list[str] = []
+        return "", ""
     receiver = func.value
-    while isinstance(receiver, ast.Attribute):
-        parts.insert(0, receiver.attr)
-        receiver = receiver.value
-    if not isinstance(receiver, ast.Name) or receiver.id in SELF_NAMES:
-        return ""
-    if receiver.id in instances:
-        return "" if parts else instances[receiver.id]
-    if receiver.id in imports:
-        return ".".join([imports[receiver.id], *parts])
-    return "" if parts else receiver.id
+    if isinstance(receiver, ast.Name) and receiver.id in instances:
+        return instances[receiver.id], ""
+    root = _root(receiver)
+    name = dotted_name(receiver, imports)
+    return name, name if root and root.id in imports else ""

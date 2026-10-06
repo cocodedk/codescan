@@ -47,11 +47,14 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
     def _scope(self, scope: str, cls: str | None, func: str | None, func_line: int) -> Iterator[None]:
         """Enter a class or function body, restoring the enclosing scope on exit."""
         saved = (self.current_scope, self.current_class, self.current_function, self.current_function_line)
+        outer_imports = (self.external_names, self.import_bindings)
+        self.external_names, self.import_bindings = set(self.external_names), dict(self.import_bindings)
         self.current_scope, self.current_class = scope, cls
         self.current_function, self.current_function_line = func, func_line
         try:
             yield
         finally:
+            self.external_names, self.import_bindings = outer_imports  # imports made inside stay inside
             (self.current_scope, self.current_class,
              self.current_function, self.current_function_line) = saved
 

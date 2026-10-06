@@ -47,7 +47,8 @@ def bare_targets(caller: Definition, candidates: list[Definition], by_position: 
             return nested if len(nested) == 1 else []
         scope = by_position.get((caller.file, scope.parent_line))
     module_level = [d for d in functions if d.parent_line == NOT_NESTED]
-    return [d for d in module_level if d.file == caller.file] or narrowest(module_level, [lambda d: True])
+    same_file = [d for d in module_level if d.file == caller.file]
+    return same_file or (module_level if len({d.file for d in module_level}) == 1 else [])
 
 
 def self_targets(caller: Definition, callee: str, candidates: list[Definition]) -> list[Definition]:
@@ -58,26 +59,34 @@ def self_targets(caller: Definition, callee: str, candidates: list[Definition]) 
     return narrowest(methods, [own, lambda d: d.file == caller.file, lambda d: True])
 
 
-def receiver_targets(caller: Definition, callee: str, candidates: list[Definition], recv: str) -> list[Definition]:
-    """Definitions `receiver.name()` reaches when the receiver is a known project class or module."""
-    if not recv:
-        return []
-    class_module, _, class_name = recv.rpartition(".")
+def receiver_targets(
+    caller: Definition, callee: str, candidates: list[Definition], recv_class: str, recv_module: str
+) -> list[Definition]:
+    """Definitions `receiver.name()` reaches when the receiver is a known project class or module.
+
+    A class named through its module (`models.Runner`) counts only if it is defined in that module.
+    """
+    class_module, _, class_name = recv_class.rpartition(".")
     methods = [d for d in candidates if d.name == f"{class_name}.{callee}"]
+    if class_module:
+        methods = [d for d in methods if module_of(d.file) == class_module]
+        tiers = [lambda d: True]
+    else:
+        tiers = [lambda d: d.file == caller.file, lambda d: True]
     if methods:
-        tiers = [lambda d: bool(class_module) and module_of(d.file) == class_module,
-                 lambda d: d.file == caller.file, lambda d: True]
         return narrowest(methods, tiers)
-    return [d for d in candidates if not is_method(d) and d.parent_line == NOT_NESTED and module_of(d.file) == recv]
+    if not recv_module:
+        return []
+    return [d for d in candidates if not is_method(d) and d.parent_line == NOT_NESTED and module_of(d.file) == recv_module]
 
 
 def choose_targets(
     caller: Definition, callee: str, candidates: list[Definition], by_position: Position,
-    kind: str = ATTR_CALL, recv: str = "",
+    kind: str = ATTR_CALL, recv_class: str = "", recv_module: str = "",
 ) -> list[Definition]:
     """Every definition a call certainly refers to; an empty list leaves the call unresolved."""
     if kind == BARE_CALL:
         return bare_targets(caller, candidates, by_position)
     if kind == SELF_CALL:
         return self_targets(caller, callee, candidates)
-    return receiver_targets(caller, callee, candidates, recv)
+    return receiver_targets(caller, callee, candidates, recv_class, recv_module)

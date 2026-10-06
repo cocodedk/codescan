@@ -26,11 +26,11 @@ def resolve_calls(session: Any) -> None:
         MATCH (caller:Function {is_reference: false})-[r:CALLS]->(ref:ReferenceFunction)
         RETURN caller.name AS caller, caller.file AS caller_file, caller.line AS caller_line,
                ref.name AS callee, r.line AS line, r.args AS args, coalesce(r.kind, 'attr') AS kind,
-               coalesce(r.recv, '') AS recv
+               coalesce(r.recv_class, '') AS recv_class, coalesce(r.recv_module, '') AS recv_module
     """):
         caller = by_position[(row["caller_file"], row["caller_line"])]
         targets = choose_targets(caller, row["callee"], index.get(row["callee"], []), by_position,
-                                 row["kind"], row["recv"])
+                                 row["kind"], row["recv_class"], row["recv_module"])
         resolved += [{**row.data(), "target": t.name, "target_file": t.file, "target_line": t.line} for t in targets]
 
     if resolved:
@@ -38,7 +38,8 @@ def resolve_calls(session: Any) -> None:
             """
             UNWIND $rows AS row
             MATCH (caller:Function {name: row.caller, file: row.caller_file, line: row.caller_line, is_reference: false})
-                  -[old:CALLS {line: row.line, args: row.args, kind: row.kind}]->(ref:ReferenceFunction {name: row.callee})
+                  -[old:CALLS {line: row.line, args: row.args, kind: row.kind,
+                                     recv_class: row.recv_class, recv_module: row.recv_module}]->(ref:ReferenceFunction {name: row.callee})
             MATCH (target:Function {name: row.target, file: row.target_file, line: row.target_line, is_reference: false})
             MERGE (caller)-[:CALLS {color: $color, line: row.line, args: row.args, kind: row.kind}]->(target)
             DELETE old

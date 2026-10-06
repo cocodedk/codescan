@@ -1,7 +1,7 @@
 """Call recording for CodeAnalyzer."""
 import ast
 
-from .call_names import call_kind, callee_name, receiver_hint
+from .call_names import call_kind, callee_name, dotted_name, receiver_hints
 from .graph_batch import LINKS, GraphBatch
 from .stats_collector import StatsCollector
 
@@ -19,28 +19,32 @@ class CallsMixin(ast.NodeVisitor):
     instances: dict[tuple[str | None, int], dict[str, str]]  # per function: local name -> class it was built from
 
     def visit_Assign(self, node: ast.Assign) -> None:
+        super().visit_Assign(node)  # type: ignore[misc]  # reads the value, then the targets
         self._bind_instances(node.targets, node.value)
-        super().visit_Assign(node)  # type: ignore[misc]
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        super().visit_AnnAssign(node)  # type: ignore[misc]
         if node.value is not None:
             self._bind_instances([node.target], node.value)
-        super().visit_AnnAssign(node)  # type: ignore[misc]
+
+    def visit_Name(self, node: ast.Name) -> None:
+        """Any other way of binding a name (unpacking, `+=`, `for`, `with`, `:=`, `del`) forgets its class."""
+        if self.current_function and not isinstance(node.ctx, ast.Load):
+            self._local_instances().pop(node.id, None)
 
     def _local_instances(self) -> dict[str, str]:
         return self.instances.setdefault((self.current_function, self.current_function_line), {})
 
     def _bind_instances(self, targets: list[ast.expr], value: ast.expr) -> None:
-        """Remember `x = Foo()` for the current function; any other assignment to `x` forgets it."""
-        if not self.current_function:
+        """Remember `x = Foo()` for the current function, with Foo read through the file's imports."""
+        if not self.current_function or not isinstance(value, ast.Call):
             return
-        built = callee_name(value.func, self.external_names) if isinstance(value, ast.Call) else None
+        if callee_name(value.func, self.external_names) is None:
+            return
+        built = dotted_name(value.func, self.import_bindings)
         for target in targets:
-            if isinstance(target, ast.Name):
-                if built:
-                    self._local_instances()[target.id] = built
-                else:
-                    self._local_instances().pop(target.id, None)
+            if built and isinstance(target, ast.Name):
+                self._local_instances()[target.id] = built
 
     def visit_Call(self, node: ast.Call) -> None:
         callee = callee_name(node.func, self.external_names)
@@ -54,7 +58,7 @@ class CallsMixin(ast.NodeVisitor):
                 line=line,
                 args=args,
             )
-            recv = receiver_hint(node.func, self.import_bindings, self._local_instances())
+            recv_class, recv_module = receiver_hints(node.func, self.import_bindings, self._local_instances())
             # One placeholder per callee name; resolve_calls() re-points the edge at the real definition
             self.batch.add(
                 LINKS,
@@ -63,9 +67,11 @@ class CallsMixin(ast.NodeVisitor):
                 ON CREATE SET called.file = $file, called.line = row.line, called.end_line = -1, called.length = 0
                 WITH called, row
                 MATCH (caller:Function {name: row.caller_name, file: $file, line: row.caller_line, is_reference: false})
-                MERGE (caller)-[:CALLS {line: row.line, args: row.args, kind: row.kind, recv: row.recv}]->(called)""",
+                MERGE (caller)-[:CALLS {line: row.line, args: row.args, kind: row.kind,
+                                      recv_class: row.recv_class, recv_module: row.recv_module}]->(called)""",
                 called_name=callee, caller_name=self.current_function,
-                caller_line=self.current_function_line, line=line, args=args, kind=call_kind(node.func), recv=recv,
+                caller_line=self.current_function_line, line=line, args=args, kind=call_kind(node.func),
+                recv_class=recv_class, recv_module=recv_module,
             )
 
         # Calls nested in the arguments (or the callee expression) still count
