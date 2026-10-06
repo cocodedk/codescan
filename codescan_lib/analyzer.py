@@ -7,6 +7,7 @@ from .analyzer_constants import ConstantsMixin
 from .analyzer_imports import ImportsMixin
 from .call_names import call_kind, callee_name
 from .constants import COLOR_CLASS_CONTAINS
+from .graph_batch import LINKS, NODES, GraphBatch
 from .relationships import link_tests
 from .stats_collector import StatsCollector
 from .utils import is_example_file, node_span
@@ -30,6 +31,7 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
         self.is_example_file: bool = is_example_file(file_path)
         self.current_scope: str = "module"
         self.skip_dunder_methods: bool = skip_dunder_methods
+        self.batch = GraphBatch(file_path)  # this file's writes, sent by flush()
         self.stdlib_names: set[str] = set()  # names this file imported from the standard library
 
         # Use provided stats collector or create a new one
@@ -70,13 +72,11 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
             is_test=self.is_test_file,
             is_example=self.is_example_file,
         )
-        self.session.run(
-            f"MERGE (c{self._labels('Class')} {{name: $name, file: $file, line: $line, end_line: $end_line, length: $length}})",
-            name=node.name,
-            file=self.file_path,
-            line=line,
-            end_line=end_line,
-            length=length,
+        self.batch.add(
+            NODES,
+            f"UNWIND $rows AS row MERGE (c{self._labels('Class')} "
+            "{name: row.name, file: $file, line: row.line, end_line: row.end_line, length: row.length})",
+            name=node.name, line=line, end_line=end_line, length=length,
         )
 
         # Decorators and base classes run in the enclosing scope; the body in the class's
@@ -108,36 +108,21 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
         if owner:
             labels += ":ClassFunction"
 
-        self.session.run(
-            f"""
-            MERGE (f{labels} {{
-                name: $name,
-                file: $file,
-                is_reference: false,
-                line: $line,
-                end_line: $end_line,
-                length: $length
-            }})
-            """,
-            name=full_name,
-            file=self.file_path,
-            line=line,
-            end_line=end_line,
-            length=length,
+        self.batch.add(
+            NODES,
+            f"""UNWIND $rows AS row
+            MERGE (f{labels} {{name: row.name, file: $file, is_reference: false,
+                               line: row.line, end_line: row.end_line, length: row.length}})""",
+            name=full_name, line=line, end_line=end_line, length=length,
         )
         if owner:
-            self.session.run(
-                """
-                MATCH (c:Class {name: $class_name, file: $file})
-                WITH c
-                MATCH (f:Function {name: $func_name, file: $file, line: $line, is_reference: false})
-                MERGE (c)-[:CONTAINS {color: $edge_color}]->(f)
-                """,
-                class_name=owner,
-                func_name=full_name,
-                file=self.file_path,
-                line=line,
-                edge_color=COLOR_CLASS_CONTAINS,
+            self.batch.add(
+                LINKS,
+                """UNWIND $rows AS row
+                MATCH (c:Class {name: row.class_name, file: $file})
+                MATCH (f:Function {name: row.func_name, file: $file, line: row.line, is_reference: false})
+                MERGE (c)-[:CONTAINS {color: $color}]->(f)""",
+                color=COLOR_CLASS_CONTAINS, class_name=owner, func_name=full_name, line=line,
             )
 
         # Decorators, defaults and annotations run in the enclosing scope; the body in the function's
@@ -162,25 +147,24 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
                 args=args,
             )
             # One placeholder per callee name; resolve_calls() re-points the edge at the real definition
-            self.session.run(
-                """
-                MERGE (called:Function:ReferenceFunction {name: $called_name, is_reference: true})
-                ON CREATE SET called.file = $file, called.line = $line, called.end_line = -1, called.length = 0
-                WITH called
-                MATCH (caller:Function {name: $caller_name, file: $file, line: $caller_line, is_reference: false})
-                MERGE (caller)-[:CALLS {line: $line, args: $args, kind: $kind}]->(called)
-                """,
-                called_name=callee,
-                caller_name=self.current_function,
-                caller_line=self.current_function_line,
-                file=self.file_path,
-                line=line,
-                args=args,
-                kind=call_kind(node.func),
+            self.batch.add(
+                LINKS,
+                """UNWIND $rows AS row
+                MERGE (called:Function:ReferenceFunction {name: row.called_name, is_reference: true})
+                ON CREATE SET called.file = $file, called.line = row.line, called.end_line = -1, called.length = 0
+                WITH called, row
+                MATCH (caller:Function {name: row.caller_name, file: $file, line: row.caller_line, is_reference: false})
+                MERGE (caller)-[:CALLS {line: row.line, args: row.args, kind: row.kind}]->(called)""",
+                called_name=callee, caller_name=self.current_function,
+                caller_line=self.current_function_line, line=line, args=args, kind=call_kind(node.func),
             )
 
         # Calls nested in the arguments (or the callee expression) still count
         self.generic_visit(node)
+
+    def flush(self) -> None:
+        """Write everything this file defines to the graph."""
+        self.batch.flush(self.session)
 
     def process_test_relationships(self, custom_patterns: dict[str, Any] | None = None) -> None:
         """Relate test code to production code. Called at the end of analyze_file for test files."""

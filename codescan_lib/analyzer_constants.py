@@ -1,9 +1,9 @@
 """Constant detection for CodeAnalyzer."""
 import ast
-from typing import Any
 
 from .constant_values import extract_constant_value
 from .constants import COLOR_DEFINES
+from .graph_batch import LINKS, NODES, GraphBatch
 from .stats_collector import StatsCollector
 from .utils import node_span
 
@@ -17,7 +17,7 @@ class ConstantsMixin(ast.NodeVisitor):
     """Visits assignments and stores upper-case names as Constant nodes."""
 
     file_path: str
-    session: Any
+    batch: GraphBatch
     stats: StatsCollector
     is_test_file: bool
     current_scope: str
@@ -63,40 +63,24 @@ class ConstantsMixin(ast.NodeVisitor):
         container_name: str | None,
     ) -> None:
         """Create a Constant node and link it to the class or function that defines it."""
-        self.session.run(
-            """
-            MERGE (c:Constant {
-                name: $name,
-                value: $value,
-                type: $type,
-                file: $file,
-                line: $line,
-                end_line: $end_line,
-                scope: $scope
-            })
-            """,
-            name=name,
-            value=value,
-            type=value_type,
-            file=self.file_path,
-            line=line_num,
-            end_line=end_line_num,
+        self.batch.add(
+            NODES,
+            """UNWIND $rows AS row
+            MERGE (c:Constant {name: row.name, value: row.value, type: row.type, file: $file,
+                               line: row.line, end_line: row.end_line, scope: row.scope})""",
+            name=name, value=value, type=value_type, line=line_num, end_line=end_line_num,
             scope=self.current_scope,
         )
         if self.current_scope == "module" or not container_name:
             return
         owner_label = "Class" if self.current_scope == "class" else "Function"
-        owner_extra = ", line: $owner_line, is_reference: false" if owner_label == "Function" else ""
-        self.session.run(
-            f"""
-            MATCH (constant:Constant {{name: $constant_name, file: $file, line: $line}})
-            MATCH (owner:{owner_label} {{name: $owner_name, file: $file{owner_extra}}})
-            MERGE (owner)-[:DEFINES {{color: $edge_color}}]->(constant)
-            """,
-            constant_name=name,
-            owner_name=container_name,
-            owner_line=self.current_function_line,
-            file=self.file_path,
-            line=line_num,
-            edge_color=COLOR_DEFINES,
+        owner_extra = ", line: row.owner_line, is_reference: false" if owner_label == "Function" else ""
+        self.batch.add(
+            LINKS,
+            f"""UNWIND $rows AS row
+            MATCH (constant:Constant {{name: row.constant_name, file: $file, line: row.line}})
+            MATCH (owner:{owner_label} {{name: row.owner_name, file: $file{owner_extra}}})
+            MERGE (owner)-[:DEFINES {{color: $color}}]->(constant)""",
+            color=COLOR_DEFINES, constant_name=name, owner_name=container_name,
+            owner_line=self.current_function_line, line=line_num,
         )

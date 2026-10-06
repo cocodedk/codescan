@@ -92,6 +92,7 @@ def analyze_file(
                 skip_dunder_methods=skip_dunder_methods,
             )
             analyzer.visit(tree)
+            analyzer.flush()
 
             if not defer_relationships:
                 resolve_calls(session)
