@@ -45,3 +45,19 @@ def print_db_info(quiet: bool = False):
     print("- Show calls at specific line: MATCH ()-[r:CALLS {line: 42}]->() RETURN r")
     print("- Find long functions: MATCH (f:Function) RETURN f.name, f.file, f.length ORDER BY f.length DESC LIMIT 10")
     print("=== End of Database Info ===")
+
+# The lookups every scan repeats: each MATCH by these properties would
+# otherwise scan every node with the label.
+INDEXES = (
+    "CREATE INDEX IF NOT EXISTS FOR (f:Function) ON (f.name, f.file)",
+    "CREATE INDEX IF NOT EXISTS FOR (r:ReferenceFunction) ON (r.name)",
+    "CREATE INDEX IF NOT EXISTS FOR (c:Class) ON (c.name, c.file)",
+    "CREATE INDEX IF NOT EXISTS FOR (c:Constant) ON (c.name, c.file)",
+    "CREATE INDEX IF NOT EXISTS FOR (f:File) ON (f.path)",
+)
+
+
+def ensure_indexes(session) -> None:
+    """Create the indexes a scan's lookups need, if they are missing."""
+    for statement in INDEXES:
+        session.run(statement)

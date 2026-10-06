@@ -65,6 +65,7 @@ def another_function():
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name == "TestExample":
                 analyzer.visit_ClassDef(node)
+                analyzer.flush()
                 break
 
         # Verify the correct Cypher query was called with Test and TestClass labels
@@ -93,6 +94,7 @@ def another_function():
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "test_function":
                 analyzer.visit_FunctionDef(node)
+                analyzer.flush()
                 break
 
         # Verify the call arguments to session.run
@@ -112,6 +114,7 @@ def another_function():
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name == "RegularClass":
                 analyzer.visit_ClassDef(node)
+                analyzer.flush()
                 break
 
         # Verify the call to session.run doesn't include test labels
@@ -133,6 +136,7 @@ def another_function():
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "another_function":
                 analyzer.visit_FunctionDef(node)
+                analyzer.flush()
                 break
 
         # Verify the call to session.run doesn't include test labels

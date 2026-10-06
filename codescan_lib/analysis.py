@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from .analyzer import CodeAnalyzer
 from .constants import COLOR_FILE_CONTAINS, IGNORE_DIRS
+from .db_operations import ensure_indexes
 from .relationships import count_unresolved, link_tests, resolve_calls
 from .stats_collector import StatsCollector
 from .utils import get_relative_path, is_example_file, is_project_file, is_test_file
@@ -92,6 +93,7 @@ def analyze_file(
                 skip_dunder_methods=skip_dunder_methods,
             )
             analyzer.visit(tree)
+            analyzer.flush()
 
             if not defer_relationships:
                 resolve_calls(session)
@@ -169,6 +171,7 @@ def analyze_directory(
         ignore_dirs = IGNORE_DIRS
 
     stats = StatsCollector(verbose=verbose)
+    ensure_indexes(session)
 
     # Store the base directory to identify project files
     base_dir = os.path.abspath(directory)

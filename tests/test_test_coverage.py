@@ -78,6 +78,7 @@ def analyze_file(file_path, session, base_dir):
 
         # Call visit_Import with the node
         analyzer.visit_Import(import_node)
+        analyzer.flush()
 
         # Verify the correct Cypher query was called to track the import
         found_import_tracking = False
@@ -120,6 +121,7 @@ def analyze_file(file_path, session, base_dir):
 
         # Call visit_ImportFrom with the node
         analyzer.visit_ImportFrom(importfrom_node)
+        analyzer.flush()
 
         # Verify the correct Cypher query was called to track the import
         found_import_tracking = False

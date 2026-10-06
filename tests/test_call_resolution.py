@@ -203,3 +203,15 @@ def test_should_count_only_unresolved_calls_as_reference_functions(session, tmp_
     stats = analyze_directory(str(tmp_path), session)
     assert (stats.elements["functions"], stats.elements["reference_functions"]) == (2, 0)
 
+
+
+def test_should_index_the_lookups_a_scan_makes(session, tmp_path):
+    (tmp_path / "m.py").write_text("def f(): pass\n")
+    analyze_directory(str(tmp_path), session)
+    indexed = {
+        (tuple(r["labelsOrTypes"]), tuple(r["properties"]))
+        for r in session.run("SHOW INDEXES YIELD labelsOrTypes, properties WHERE labelsOrTypes IS NOT NULL "
+                             "RETURN labelsOrTypes, properties")
+    }
+    assert {(("Function",), ("name", "file")), (("Class",), ("name", "file")), (("Constant",), ("name", "file")),
+            (("File",), ("path",)), (("ReferenceFunction",), ("name",))} <= indexed

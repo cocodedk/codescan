@@ -1,8 +1,8 @@
 """Import tracking for CodeAnalyzer."""
 import ast
-from typing import Any
 
 from .constants import COLOR_IMPORTS
+from .graph_batch import LINKS, GraphBatch
 from .stats_collector import StatsCollector
 from .utils import is_stdlib_module
 
@@ -11,7 +11,7 @@ class ImportsMixin(ast.NodeVisitor):
     """Visits imports: remembers standard-library names and records imports made by tests."""
 
     file_path: str
-    session: Any
+    batch: GraphBatch
     stats: StatsCollector
     is_test_file: bool
     current_function: str | None
@@ -39,19 +39,14 @@ class ImportsMixin(ast.NodeVisitor):
         if not self.is_test_file:
             return
         self.stats.register_import(name=full_name, file_path=self.file_path, is_test=True)
-        module_prop = ", module: $module" if module else ""
-        self.session.run(
-            f"""
-            MERGE (i:Import {{name: $name{module_prop}, alias: $alias, file: $file}})
-            WITH i
-            MATCH (f:Function {{name: $func_name, file: $file, line: $func_line, is_reference: false}})
-            MERGE (f)-[:IMPORTS {{color: $edge_color}}]->(i)
-            """,
-            name=name,
-            module=module,
-            alias=alias,
-            file=self.file_path,
-            func_name=self.current_function,
-            func_line=self.current_function_line,
-            edge_color=COLOR_IMPORTS,
+        module_prop = ", module: row.module" if module else ""
+        self.batch.add(
+            LINKS,
+            f"""UNWIND $rows AS row
+            MERGE (i:Import {{name: row.name{module_prop}, alias: row.alias, file: $file}})
+            WITH i, row
+            MATCH (f:Function {{name: row.func_name, file: $file, line: row.func_line, is_reference: false}})
+            MERGE (f)-[:IMPORTS {{color: $color}}]->(i)""",
+            color=COLOR_IMPORTS, name=name, module=module, alias=alias,
+            func_name=self.current_function, func_line=self.current_function_line,
         )
