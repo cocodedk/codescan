@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from .analyzer import CodeAnalyzer
 from .constants import COLOR_FILE_CONTAINS, IGNORE_DIRS
-from .relationships import link_tests, resolve_calls
+from .relationships import count_unresolved, link_tests, resolve_calls
 from .stats_collector import StatsCollector
 from .utils import get_relative_path, is_example_file, is_project_file, is_test_file
 
@@ -30,8 +30,10 @@ def analyze_file(
         stats_collector: Statistics collector to use
         custom_patterns: Dictionary with custom test detection patterns
         skip_dunder_methods: Whether to skip dunder methods (default: True)
-        defer_relationships: Leave call resolution and test linking to finalize_graph(),
-            so a caller analyzing many files does that whole-graph work once
+        defer_relationships: Leave call resolution and test linking to finalize_graph().
+            Pass True when analyzing several files and call finalize_graph() once at the
+            end: resolving per file settles each call on what has been scanned so far,
+            so the result then depends on the order of the files
     """
     # Use provided stats collector or create a new one
     stats = stats_collector if stats_collector is not None else StatsCollector()
@@ -190,6 +192,7 @@ def analyze_directory(
         )
 
     finalize_graph(session, custom_patterns)
+    stats.elements["reference_functions"] = count_unresolved(session)
     return stats
 
 

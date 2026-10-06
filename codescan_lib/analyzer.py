@@ -5,7 +5,8 @@ from typing import Any
 
 from .analyzer_constants import ConstantsMixin
 from .analyzer_imports import ImportsMixin
-from .constants import BUILTIN_FUNCTIONS, COLOR_CLASS_CONTAINS
+from .call_names import call_kind, callee_name
+from .constants import COLOR_CLASS_CONTAINS
 from .relationships import link_tests
 from .stats_collector import StatsCollector
 from .utils import is_example_file, node_span
@@ -24,6 +25,7 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
         self.session: Any = session
         self.current_class: str | None = None
         self.current_function: str | None = None
+        self.current_function_line: int = -1  # tells apart same-named functions in one file
         self.is_test_file: bool = is_test_file
         self.is_example_file: bool = is_example_file(file_path)
         self.current_scope: str = "module"
@@ -36,14 +38,16 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
         )
 
     @contextmanager
-    def _scope(self, scope: str, cls: str | None, func: str | None) -> Iterator[None]:
+    def _scope(self, scope: str, cls: str | None, func: str | None, func_line: int) -> Iterator[None]:
         """Enter a class or function body, restoring the enclosing scope on exit."""
-        saved = (self.current_scope, self.current_class, self.current_function)
-        self.current_scope, self.current_class, self.current_function = scope, cls, func
+        saved = (self.current_scope, self.current_class, self.current_function, self.current_function_line)
+        self.current_scope, self.current_class = scope, cls
+        self.current_function, self.current_function_line = func, func_line
         try:
             yield
         finally:
-            self.current_scope, self.current_class, self.current_function = saved
+            (self.current_scope, self.current_class,
+             self.current_function, self.current_function_line) = saved
 
     def _labels(self, kind: str) -> str:
         """Neo4j labels for a Class or Function node, by the kind of file it lives in."""
@@ -77,7 +81,7 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
 
         # Decorators and base classes run in the enclosing scope; the body in the class's
         self._visit_all([*node.decorator_list, *node.bases, *node.keywords])
-        with self._scope("class", node.name, self.current_function):
+        with self._scope("class", node.name, self.current_function, self.current_function_line):
             self._visit_all(node.body)
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
@@ -126,12 +130,13 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
                 """
                 MATCH (c:Class {name: $class_name, file: $file})
                 WITH c
-                MATCH (f:Function {name: $func_name, file: $file})
+                MATCH (f:Function {name: $func_name, file: $file, line: $line, is_reference: false})
                 MERGE (c)-[:CONTAINS {color: $edge_color}]->(f)
                 """,
                 class_name=owner,
                 func_name=full_name,
                 file=self.file_path,
+                line=line,
                 edge_color=COLOR_CLASS_CONTAINS,
             )
 
@@ -139,27 +144,13 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
         self._visit_all([*node.decorator_list, node.args])
         if node.returns:
             self.visit(node.returns)
-        with self._scope("function", self.current_class, full_name):
+        with self._scope("function", self.current_class, full_name, line):
             self._visit_all(node.body)
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
-    def _callee_name(self, func: ast.expr) -> str | None:
-        """Name of the called function, or None for builtins and standard-library calls."""
-        if isinstance(func, ast.Name):
-            skipped = func.id in BUILTIN_FUNCTIONS or func.id in self.stdlib_names
-            return None if skipped else func.id
-        if isinstance(func, ast.Attribute):
-            root = func.value
-            while isinstance(root, ast.Attribute):
-                root = root.value
-            if isinstance(root, ast.Name) and root.id in self.stdlib_names:
-                return None
-            return func.attr
-        return None
-
     def visit_Call(self, node: ast.Call) -> None:
-        callee = self._callee_name(node.func)
+        callee = callee_name(node.func, self.stdlib_names)
         if callee and self.current_function:
             line = getattr(node, "lineno", -1)
             args = ", ".join(ast.unparse(arg) for arg in node.args)
@@ -176,18 +167,16 @@ class CodeAnalyzer(ConstantsMixin, ImportsMixin):
                 MERGE (called:Function:ReferenceFunction {name: $called_name, is_reference: true})
                 ON CREATE SET called.file = $file, called.line = $line, called.end_line = -1, called.length = 0
                 WITH called
-                MATCH (caller:Function {name: $caller_name, file: $file})
-                MERGE (caller)-[:CALLS {line: $line, args: $args, bare: $bare}]->(called)
+                MATCH (caller:Function {name: $caller_name, file: $file, line: $caller_line, is_reference: false})
+                MERGE (caller)-[:CALLS {line: $line, args: $args, kind: $kind}]->(called)
                 """,
                 called_name=callee,
                 caller_name=self.current_function,
+                caller_line=self.current_function_line,
                 file=self.file_path,
                 line=line,
                 args=args,
-                bare=isinstance(node.func, ast.Name),
-            )
-            self.stats.register_function(
-                name=callee, file_path=self.file_path, line=line, is_reference=True
+                kind=call_kind(node.func),
             )
 
         # Calls nested in the arguments (or the callee expression) still count

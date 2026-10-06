@@ -15,6 +15,7 @@ class ImportsMixin(ast.NodeVisitor):
     stats: StatsCollector
     is_test_file: bool
     current_function: str | None
+    current_function_line: int
     stdlib_names: set[str]
 
     def visit_Import(self, node: ast.Import) -> None:
@@ -43,7 +44,7 @@ class ImportsMixin(ast.NodeVisitor):
             f"""
             MERGE (i:Import {{name: $name{module_prop}, alias: $alias, file: $file}})
             WITH i
-            MATCH (f:Function {{name: $func_name, file: $file}})
+            MATCH (f:Function {{name: $func_name, file: $file, line: $func_line, is_reference: false}})
             MERGE (f)-[:IMPORTS {{color: $edge_color}}]->(i)
             """,
             name=name,
@@ -51,5 +52,6 @@ class ImportsMixin(ast.NodeVisitor):
             alias=alias,
             file=self.file_path,
             func_name=self.current_function,
+            func_line=self.current_function_line,
             edge_color=COLOR_IMPORTS,
         )

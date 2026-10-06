@@ -2,7 +2,7 @@
 import pytest
 from neo4j import GraphDatabase
 
-from codescan_lib.analysis import analyze_file, finalize_graph
+from codescan_lib.analysis import analyze_directory, analyze_file, finalize_graph
 from codescan_lib.constants import NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
 from codescan_lib.db_operations import clear_database
 from codescan_lib.stats_collector import StatsCollector
@@ -151,3 +151,55 @@ def test_should_not_treat_placeholders_as_file_contents(session, tmp_path):
     scan(session, tmp_path, {"m.py": "def f():\n    undefined()\n"})
     contained = rows(session, "MATCH (:File)-[:CONTAINS]->(fn:Function) RETURN fn.name")
     assert contained == {("f",)}
+
+
+def test_should_resolve_calls_to_overloaded_definitions(session, tmp_path):
+    source = "def f(a): pass\ndef f(a, b=1): pass\ndef g():\n    f(1)\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("g", "f") in resolved_calls(session)
+
+
+def test_should_not_let_placeholders_act_as_callers(session, tmp_path):
+    files = {
+        "a.py": "def main():\n    run()\ndef run():\n    work()\n",
+        "b.py": "def go(x):\n    x.run()\n",
+        "c.py": "def run(): pass\n",
+    }
+    scan(session, tmp_path, files)
+    assert rows(session, "MATCH (:ReferenceFunction)-[r:CALLS]->() RETURN count(r)") == {(0,)}
+
+
+def test_should_not_resolve_attribute_calls_to_the_calling_method(session, tmp_path):
+    source = "class Wrapper:\n    def close(self):\n        self.r.close()\n"
+    scan(session, tmp_path, {"m.py": source})
+    assert ("Wrapper.close", "Wrapper.close") not in resolved_calls(session)
+
+
+def test_should_not_resolve_attribute_calls_to_a_same_named_function(session, tmp_path):
+    scan(session, tmp_path, {"m.py": "def connect():\n    return db.connect()\n"})
+    assert ("connect", "connect") not in resolved_calls(session)
+
+
+def test_should_tell_same_named_functions_apart_as_callers(session, tmp_path):
+    source = "def helper(): pass\ndef log(): pass\ndef outer():\n    def helper():\n        log()\n    helper()\n"
+    scan(session, tmp_path, {"m.py": source})
+    callers = rows(session, "MATCH (h:Function {name: 'helper'})-[:CALLS]->(:Function {name: 'log'}) RETURN h.line")
+    assert callers == {(4,)}
+
+
+def test_should_keep_each_call_on_a_line_that_resolves_differently(session, tmp_path):
+    files = {
+        "m.py": "class M:\n    def foo(self, a): pass\ndef go(x):\n    return foo(1) + x.foo(2)\n",
+        "a.py": "def foo(a): pass\n",
+        "b.py": "def foo(a): pass\n",
+    }
+    scan(session, tmp_path, files)
+    assert ("go", "foo") in unresolved_calls(session)
+
+
+def test_should_count_only_unresolved_calls_as_reference_functions(session, tmp_path):
+    (tmp_path / "m.py").write_text("def helper(): pass\ndef f():\n    helper()\n    helper()\n")
+    clear_database(session, quiet=True)
+    stats = analyze_directory(str(tmp_path), session)
+    assert (stats.elements["functions"], stats.elements["reference_functions"]) == (2, 0)
+

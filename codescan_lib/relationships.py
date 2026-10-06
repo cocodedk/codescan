@@ -7,6 +7,8 @@ from typing import Any, NamedTuple
 
 from .constants import COLOR_CALLS, COLOR_TESTS, TEST_FUNCTION_PREFIXES
 
+BARE_CALL, SELF_CALL, ATTR_CALL = "bare", "self", "attr"
+
 
 class Definition(NamedTuple):
     name: str
@@ -14,26 +16,31 @@ class Definition(NamedTuple):
 
 
 def choose_target(
-    caller: str, caller_file: str, callee: str, candidates: list[Definition], bare: bool = False
+    caller: str, caller_file: str, callee: str, candidates: list[Definition], kind: str = ATTR_CALL
 ) -> Definition | None:
     """Pick the one definition a call most plausibly refers to, or None if unclear.
 
-    Tiers, most specific first: a method of the caller's own class, a function
-    of that name in the caller's file, any definition in the caller's file, a
-    function of that name anywhere, then any definition. A tier with several
-    matches is ambiguous, so the call stays unresolved. A bare `name()` call
-    cannot reach a method, so only plain functions are candidates for it.
+    The call's shape decides which definitions it can reach. A bare `name()` can
+    only reach plain functions. `self.name()` reaches methods, the caller's own
+    class first. `other.name()` reaches methods or, as `module.name()`, plain
+    functions, but never the calling function itself. Within that, the closest
+    definition wins (same file before anywhere), and a tier holding several
+    matches is ambiguous, so the call stays unresolved.
     """
-    if bare:
-        candidates = [d for d in candidates if d.name == callee]
+    def is_method(d: Definition) -> bool:
+        return d.name != callee
+
     owner = caller.rpartition(".")[0]
-    tiers = (
-        lambda d: bool(owner) and d.name == f"{owner}.{callee}" and d.file == caller_file,
-        lambda d: d.name == callee and d.file == caller_file,
-        lambda d: d.file == caller_file,
-        lambda d: d.name == callee,
-        lambda d: True,
-    )
+    if kind == BARE_CALL:
+        tiers = [lambda d: d.file == caller_file, lambda d: True]
+        candidates = [d for d in candidates if not is_method(d)]
+    else:
+        tiers = [lambda d: is_method(d) and d.file == caller_file, is_method]
+        if kind == SELF_CALL:
+            tiers.insert(0, lambda d: bool(owner) and d.name == f"{owner}.{callee}" and d.file == caller_file)
+        else:
+            tiers.append(lambda d: not is_method(d))
+            candidates = [d for d in candidates if d != Definition(caller, caller_file)]
     for tier in tiers:
         matches = [d for d in candidates if tier(d)]
         if matches:
@@ -43,20 +50,20 @@ def choose_target(
 
 def resolve_calls(session: Any) -> None:
     """Re-point calls to placeholder nodes at the function they actually call."""
-    index: dict[str, list[Definition]] = {}
+    index: dict[str, set[Definition]] = {}
     for row in session.run(
         "MATCH (f:Function) WHERE f.is_reference = false RETURN f.name AS name, f.file AS file"
     ):
-        index.setdefault(row["name"].rpartition(".")[2], []).append(Definition(row["name"], row["file"]))
+        index.setdefault(row["name"].rpartition(".")[2], set()).add(Definition(row["name"], row["file"]))
 
     resolved = []
     for row in session.run("""
-        MATCH (caller:Function)-[r:CALLS]->(ref:ReferenceFunction)
-        RETURN caller.name AS caller, caller.file AS caller_file, ref.name AS callee,
-               r.line AS line, r.args AS args, coalesce(r.bare, false) AS bare
+        MATCH (caller:Function {is_reference: false})-[r:CALLS]->(ref:ReferenceFunction)
+        RETURN caller.name AS caller, caller.file AS caller_file, caller.line AS caller_line,
+               ref.name AS callee, r.line AS line, r.args AS args, coalesce(r.kind, 'attr') AS kind
     """):
-        candidates = index.get(row["callee"], [])
-        target = choose_target(row["caller"], row["caller_file"], row["callee"], candidates, row["bare"])
+        candidates = sorted(index.get(row["callee"], ()))
+        target = choose_target(row["caller"], row["caller_file"], row["callee"], candidates, row["kind"])
         if target:
             resolved.append({**row.data(), "target": target.name, "target_file": target.file})
 
@@ -64,8 +71,8 @@ def resolve_calls(session: Any) -> None:
         session.run(
             """
             UNWIND $rows AS row
-            MATCH (caller:Function {name: row.caller, file: row.caller_file})
-                  -[old:CALLS {line: row.line}]->(ref:ReferenceFunction {name: row.callee})
+            MATCH (caller:Function {name: row.caller, file: row.caller_file, line: row.caller_line, is_reference: false})
+                  -[old:CALLS {line: row.line, args: row.args, kind: row.kind}]->(ref:ReferenceFunction {name: row.callee})
             MATCH (target:Function {name: row.target, file: row.target_file, is_reference: false})
             MERGE (caller)-[:CALLS {color: $color, line: row.line, args: row.args}]->(target)
             DELETE old
@@ -74,6 +81,11 @@ def resolve_calls(session: Any) -> None:
             color=COLOR_CALLS,
         )
     session.run("MATCH (ref:ReferenceFunction) WHERE NOT ()-[:CALLS]->(ref) DETACH DELETE ref")
+
+
+def count_unresolved(session: Any) -> int:
+    """Number of callee names no definition could be found for."""
+    return int(session.run("MATCH (ref:ReferenceFunction) RETURN count(ref) AS n").single()["n"])
 
 
 def link_tests(session: Any, function_prefixes: list[str] | None = None) -> None:

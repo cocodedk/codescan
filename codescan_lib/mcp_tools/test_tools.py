@@ -126,7 +126,7 @@ def untested_functions(exclude_private: bool = True) -> list[dict[str, Any]]:
     Returns:
         List of functions that don't have any tests covering them
     """
-    where_clause = "WHERE NOT f:TestFunction AND NOT (:TestFunction)-[:TESTS]->(f)"
+    where_clause = "WHERE NOT f:TestFunction AND f.is_reference = false AND NOT (:TestFunction)-[:TESTS]->(f)"
 
     if exclude_private:
         where_clause += " AND NOT f.name STARTS WITH '_'"
@@ -147,9 +147,9 @@ def get_test_coverage_ratio() -> list[dict[str, Any]]:
         Overall test coverage ratio and counts
     """
     return q("""
-        MATCH (f:Function) WHERE NOT f:TestFunction
+        MATCH (f:Function) WHERE NOT f:TestFunction AND f.is_reference = false
         WITH count(f) AS total_functions
-        MATCH (f:Function) WHERE NOT f:TestFunction
+        MATCH (f:Function) WHERE NOT f:TestFunction AND f.is_reference = false
           AND (:TestFunction)-[:TESTS]->(f)
         WITH total_functions, count(f) AS tested_functions
         RETURN

@@ -23,6 +23,7 @@ class ConstantsMixin(ast.NodeVisitor):
     current_scope: str
     current_class: str | None
     current_function: str | None
+    current_function_line: int
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self._record_constants(node, node.targets, node.value)
@@ -85,14 +86,16 @@ class ConstantsMixin(ast.NodeVisitor):
         if self.current_scope == "module" or not container_name:
             return
         owner_label = "Class" if self.current_scope == "class" else "Function"
+        owner_extra = ", line: $owner_line, is_reference: false" if owner_label == "Function" else ""
         self.session.run(
             f"""
             MATCH (constant:Constant {{name: $constant_name, file: $file, line: $line}})
-            MATCH (owner:{owner_label} {{name: $owner_name, file: $file}})
+            MATCH (owner:{owner_label} {{name: $owner_name, file: $file{owner_extra}}})
             MERGE (owner)-[:DEFINES {{color: $edge_color}}]->(constant)
             """,
             constant_name=name,
             owner_name=container_name,
+            owner_line=self.current_function_line,
             file=self.file_path,
             line=line_num,
             edge_color=COLOR_DEFINES,
