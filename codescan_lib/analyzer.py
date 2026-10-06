@@ -37,6 +37,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self.external_names: set[str] = set()  # names this file imported from outside the project
         self.import_bindings: dict[str, str] = {}  # names this file imported from the project -> dotted name
         self.blocked_names: set[str] = set()  # see CallsMixin
+        self.enclosing_bound: set[str] = set()
         self.sole_bindings: set[str] = set()
         self.instances: dict[str, tuple[str, int]] = {}
 

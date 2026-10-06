@@ -423,3 +423,21 @@ def test_should_not_resolve_a_call_in_a_comprehension_that_rebinds_the_instance_
 def test_should_not_count_an_annotation_without_a_value_as_a_binding(session, tmp_path):
     scan(session, tmp_path, {"m.py": R_RUN + "def f():\n    x = R()\n    x: object\n    x.run()\n"})
     assert ("f", "R.run") in resolved_calls(session)
+
+
+def test_should_not_resolve_a_closures_import_receiver_rebound_later_in_the_enclosing_function(session, tmp_path):
+    source = "import a as lib\ndef outer():\n    def inner():\n        lib.run()\n    import b as lib\n    inner()\n"
+    scan(session, tmp_path, {"a.py": "def run(): pass\n", "b.py": "def run(): pass\n", "m.py": source})
+    assert not {c for c, t in resolved_calls(session) if c == "inner"}
+
+
+def test_should_resolve_a_module_alias_call_only_to_functions_of_that_modules_file(session, tmp_path):
+    files = {
+        "pkg/__init__.py": "class utils:\n    @staticmethod\n    def helper(): pass\n",
+        "pkg/utils.py": "def helper(): pass\n",
+        "other.py": "class More:\n    def helper(self): pass\n",
+        "m.py": "import pkg.utils as utils\ndef f():\n    utils.helper()\n",
+    }
+    scan(session, tmp_path, files)
+    edges = rows(session, "MATCH (:Function {name: 'f'})-[:CALLS]->(b:Function {is_reference: false}) RETURN b.name, b.file")
+    assert edges == {("helper", "pkg/utils.py")}

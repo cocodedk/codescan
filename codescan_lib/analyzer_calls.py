@@ -20,23 +20,34 @@ class CallsMixin(ast.NodeVisitor):
     external_names: set[str]
     import_bindings: dict[str, str]
     current_scope: str
-    blocked_names: set[str]  # names a function around this call rebinds: never trusted as a receiver
+    blocked_names: set[str]  # names this call's function, or one around it, rebinds: never trusted as a receiver
+    enclosing_bound: set[str]  # every name the functions around the one being visited bind, imports included
     sole_bindings: set[str]  # names this function binds exactly once, by something other than an import
     instances: dict[str, tuple[str, int]]  # this function: local name -> (class it was built from, line)
 
     @contextmanager
     def _bindings(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[None]:
-        """Trust only receivers this function (and the ones around it) cannot have rebound."""
+        """Trust only receivers this function (and the ones around it) cannot have rebound.
+
+        Inside, a function around this one is never trusted for any name it binds, imports included.
+        This function is trusted for a name it imports only once and that nothing outside imported too.
+        """
         scan = scan_function(node)
-        saved = (self.blocked_names, self.sole_bindings, self.instances)
-        rebound = {*scan.names, *(name for name, count in scan.imports.items() if count > 1)}
-        self.blocked_names = self.blocked_names | rebound
+        saved = (self.blocked_names, self.enclosing_bound, self.sole_bindings, self.instances)
+        imported_outside = {*self.import_bindings, *self.external_names}
+        rebound = {
+            *scan.names,
+            *(name for name, count in scan.imports.items() if count > 1),
+            *(scan.imports.keys() & imported_outside),
+        }
+        self.blocked_names = self.enclosing_bound | rebound
+        self.enclosing_bound = self.enclosing_bound | scan.names.keys() | scan.imports.keys()
         self.sole_bindings = {name for name, count in scan.names.items() if count == 1 and name not in scan.imports}
         self.instances = {}
         try:
             yield
         finally:
-            self.blocked_names, self.sole_bindings, self.instances = saved
+            self.blocked_names, self.enclosing_bound, self.sole_bindings, self.instances = saved
 
     def visit_Assign(self, node: ast.Assign) -> None:
         """Remember `x = Foo()` when it is the function's only binding of `x` (and `x` is a function local)."""
