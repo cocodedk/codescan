@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from neo4j import GraphDatabase, basic_auth
 
 # --- Configuration & Setup ---
@@ -58,8 +58,8 @@ else:
     # Still need a basic print to stderr for this specific case, as logger is disabled.
     print("Logging is disabled via MCP_SERVER_LOGGING_ENABLED.", file=sys.stderr, flush=True)
 
-# --- Initialize FastMCP ---
-mcp = FastMCP("codescan_neo4j",
+# --- Initialize MCPServer ---
+mcp = MCPServer("codescan_neo4j",
               instructions="Neo4j code graph analyzer for Python codebases")
 
 # --- Neo4j Connection ---
