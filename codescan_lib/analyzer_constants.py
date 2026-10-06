@@ -2,7 +2,7 @@
 import ast
 
 from .constant_values import extract_constant_value
-from .constants import COLOR_DEFINES
+from .constants import COLOR_DEFINES, SCOPE_CLASS, SCOPE_FUNCTION, SCOPE_MODULE
 from .graph_batch import LINKS, NODES, GraphBatch
 from .stats_collector import StatsCollector
 from .utils import node_span
@@ -26,10 +26,12 @@ class ConstantsMixin(ast.NodeVisitor):
     current_function_line: int
 
     def visit_Assign(self, node: ast.Assign) -> None:
+        """Record an assignment's upper-case targets as constants."""
         self._record_constants(node, node.targets, node.value)
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        """Record an annotated assignment's upper-case target as a constant."""
         if node.value is not None:
             self._record_constants(node, [node.target], node.value)
         self.generic_visit(node)
@@ -47,8 +49,8 @@ class ConstantsMixin(ast.NodeVisitor):
                 name=target.id, file_path=self.file_path, line=line, value=text, type_name=type_name
             )
             container = (
-                self.current_class if self.current_scope == "class"
-                else self.current_function if self.current_scope == "function"
+                self.current_class if self.current_scope == SCOPE_CLASS
+                else self.current_function if self.current_scope == SCOPE_FUNCTION
                 else None
             )
             self._create_constant_node(target.id, text, type_name, line, end_line, container)
@@ -71,9 +73,9 @@ class ConstantsMixin(ast.NodeVisitor):
             name=name, value=value, type=value_type, line=line_num, end_line=end_line_num,
             scope=self.current_scope,
         )
-        if self.current_scope == "module" or not container_name:
+        if self.current_scope == SCOPE_MODULE or not container_name:
             return
-        owner_label = "Class" if self.current_scope == "class" else "Function"
+        owner_label = "Class" if self.current_scope == SCOPE_CLASS else "Function"
         owner_extra = ", line: row.owner_line, is_reference: false" if owner_label == "Function" else ""
         self.batch.add(
             LINKS,

@@ -30,6 +30,7 @@ def own_children(node: ast.AST) -> Iterator[ast.AST]:
 
 
 def branch_points(node: ast.AST) -> int:
+    """Number of extra paths this node adds to the function (0 for a node that is no branch)."""
     if isinstance(node, ast.BoolOp):
         return len(node.values) - 1
     if isinstance(node, ast.comprehension):

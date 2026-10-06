@@ -91,9 +91,9 @@ def test_should_count_only_defined_production_functions_in_the_coverage_ratio(se
         "tests/test_m.py": "def test_a():\n    also_undefined()\n",
     }
     scan(session, tmp_path, files)
-    from codescan_lib.mcp_tools.test_tools import get_test_coverage_ratio
+    from codescan_lib.mcp_tools.test_coverage_tools import get_test_coverage_ratio
 
-    with patch("codescan_lib.mcp_tools.test_tools.q", lambda cypher, **p: [r.data() for r in session.run(cypher, **p)]):
+    with patch("codescan_lib.mcp_tools.test_coverage_tools.q", lambda cypher, **p: [r.data() for r in session.run(cypher, **p)]):
         result = get_test_coverage_ratio()
     assert (result[0]["total_functions"], result[0]["tested_functions"]) == (2, 1)
 

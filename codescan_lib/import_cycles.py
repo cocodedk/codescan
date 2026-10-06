@@ -72,6 +72,7 @@ def _cycles_of_length(
     wander. Every step taken spends from `budget`; the search ends when it is spent.
     """
     def extend(path: list[str], dist: dict[str, int]) -> Iterable[list[str]]:
+        """Walk on from `path`, yielding each closed cycle of the wanted length."""
         for nxt in graph[path[-1]]:
             if budget[0] <= 0:
                 return

@@ -7,9 +7,12 @@ from typing import Any
 
 from .base import mcp, q
 
+# list_files and file_contents return `Any`: a narrower type would add an output schema to the tool
+# a client sees, and these two have never had one.
+
 
 @mcp.tool()
-def list_files(random_string: str):
+def list_files(random_string: str) -> Any:
     """
     List all unique file paths present in the code graph.
     """
@@ -23,7 +26,7 @@ def list_files(random_string: str):
     return q(query)
 
 @mcp.tool()
-def file_contents(file: str):
+def file_contents(file: str) -> Any:
     """
     List all classes, functions, and constants contained in a specific file.
 

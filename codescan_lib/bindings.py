@@ -19,10 +19,12 @@ class BindingScan(ast.NodeVisitor):
         self.funcs: Counter[str] = Counter()  # the `def` statements among the `names` sites
 
     def visit_Name(self, node: ast.Name) -> None:
+        """Count a name bound by an assignment, `for`, `with`, `del` or `:=` target."""
         if not isinstance(node.ctx, ast.Load):
             self.names[node.id] += 1
 
     def visit_arg(self, node: ast.arg) -> None:
+        """Count a parameter as a binding."""
         self.names[node.arg] += 1
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
@@ -34,6 +36,7 @@ class BindingScan(ast.NodeVisitor):
             self.visit(node.value)
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        """Count the function's name as bound here; its body is another scope."""
         self.names[node.name] += 1
         self.funcs[node.name] += 1
         defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d)]
@@ -43,26 +46,31 @@ class BindingScan(ast.NodeVisitor):
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        """Count the class's name as bound here, and visit its body."""
         self.names[node.name] += 1
         self.generic_visit(node)
 
     def visit_Import(self, node: ast.Import | ast.ImportFrom) -> None:
+        """Count each name an import binds."""
         for alias in node.names:
             self.imports[alias.asname or alias.name.split(".")[0]] += 1
 
     visit_ImportFrom = visit_Import
 
     def visit_Global(self, node: ast.Global | ast.Nonlocal) -> None:
+        """Count a `global` or `nonlocal` declaration as a binding of each name."""
         self.names.update(node.names)
 
     visit_Nonlocal = visit_Global
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        """Count the `as` name of an `except` clause."""
         if node.name:
             self.names[node.name] += 1
         self.generic_visit(node)
 
     def visit_MatchAs(self, node: ast.MatchAs | ast.MatchStar) -> None:
+        """Count a `match` capture."""
         if node.name:
             self.names[node.name] += 1
         self.generic_visit(node)
@@ -70,6 +78,7 @@ class BindingScan(ast.NodeVisitor):
     visit_MatchStar = visit_MatchAs
 
     def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        """Count the `**rest` capture of a mapping pattern."""
         if node.rest:
             self.names[node.rest] += 1
         self.generic_visit(node)
@@ -96,18 +105,21 @@ class ModuleScan(BindingScan):
         self.defs: Counter[str] = Counter()
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        """Count a module-level `def` as a definition."""
         self.defs[node.name] += 1
         super().visit_FunctionDef(node)
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        """Count a module-level `class` as a definition."""
         self.defs[node.name] += 1
         self.names[node.name] += 1
         for outer in (*node.decorator_list, *node.bases, *node.keywords):
             self.visit(outer)
 
     def sites(self, name: str) -> int:
+        """Number of places the module binds `name`, imports included."""
         return self.names[name] + self.imports[name]
 
     def rebound(self) -> set[str]:
@@ -135,6 +147,7 @@ class ModuleScan(BindingScan):
 
 
 def scan_module(tree: ast.Module) -> ModuleScan:
+    """Count where the module binds each name in its own scope."""
     scan = ModuleScan()
     for statement in tree.body:
         scan.visit(statement)
@@ -150,6 +163,7 @@ class RuntimeScan(ModuleScan):
         self.shadowed = shadowed
 
     def visit_If(self, node: ast.If) -> None:
+        """Visit an `if`, leaving out the body of one guarded by `TYPE_CHECKING`."""
         if not is_type_checking(node.test, self.origins, self.shadowed):
             self.generic_visit(node)
             return

@@ -3,12 +3,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
-BARE_CALL, SELF_CALL, ATTR_CALL = "bare", "self", "attr"
-SELF_NAMES = ("self", "cls")
+from .constants import ATTR_CALL, BARE_CALL, SELF_CALL
+
 NOT_NESTED = -1  # parent_line of a definition that is not inside a function
 
 
 class Definition(NamedTuple):
+    """A function or method defined in the project: where it is and which function it is nested in."""
+
     name: str
     file: str
     line: int
@@ -24,6 +26,7 @@ def module_scope(file: str) -> Definition:
 
 
 def is_method(d: Definition) -> bool:
+    """True when the definition is a method (its name has a class prefix)."""
     return "." in d.name
 
 

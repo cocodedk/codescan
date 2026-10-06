@@ -5,7 +5,7 @@ from contextlib import contextmanager
 
 from .bindings import BindingScan, scan_function
 from .call_names import call_kind, call_site, callee_name, dotted_name, receiver_hints
-from .call_targets import BARE_CALL
+from .constants import BARE_CALL, SCOPE_FUNCTION
 from .graph_batch import LINKS, GraphBatch
 from .stats_collector import StatsCollector
 
@@ -91,7 +91,7 @@ class CallsMixin(ast.NodeVisitor):
         """Remember `x = Foo()` when it is the function's only binding of `x` (and `x` is a function local)."""
         super().visit_Assign(node)  # type: ignore[misc]
         value = node.value
-        if self.current_scope != "function" or not isinstance(value, ast.Call):
+        if self.current_scope != SCOPE_FUNCTION or not isinstance(value, ast.Call):
             return
         if callee_name(value.func, self.external_names) is None:
             return
@@ -101,6 +101,7 @@ class CallsMixin(ast.NodeVisitor):
                 self.instances[target.id] = (built, node.end_lineno or node.lineno)
 
     def visit_Call(self, node: ast.Call) -> None:
+        """Queue a CALLS edge from the enclosing function (or the file) to the callee's placeholder."""
         callee = callee_name(node.func, self.external_names)
         if callee and (self.current_function or id(node) not in self.deferred):
             line = getattr(node, "lineno", -1)

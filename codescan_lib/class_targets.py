@@ -1,10 +1,13 @@
 """Decide which project class a call such as `Foo()` or `models.Foo()` certainly builds."""
 from typing import NamedTuple
 
-from .call_targets import ATTR_CALL, BARE_CALL, Exporters
+from .call_targets import Exporters
+from .constants import ATTR_CALL, BARE_CALL
 
 
 class ClassDefinition(NamedTuple):
+    """A class defined in the project, with what decides whether a call to its name certainly builds it."""
+
     name: str
     file: str
     line: int
@@ -13,6 +16,7 @@ class ClassDefinition(NamedTuple):
 
 
 def is_certain(c: ClassDefinition) -> bool:
+    """True when no decorator or nesting can make a call to the name mean something else."""
     return c.plain and not c.nested
 
 

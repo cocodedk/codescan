@@ -1,15 +1,14 @@
 import ast
-from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Any
 
 from .analyzer_calls import CallsMixin
 from .analyzer_constants import ConstantsMixin
 from .analyzer_imports import ImportsMixin
+from .analyzer_scope import ScopeMixin
 from .bindings import scan_module
 from .call_names import deferred_nodes, import_origins, keeps_class
 from .complexity import mark_complexity
-from .constants import COLOR_CLASS_CONTAINS
+from .constants import COLOR_CLASS_CONTAINS, SCOPE_CLASS, SCOPE_FUNCTION, SCOPE_MODULE
 from .coverage_links import link_tests
 from .forwarders import mark_forwarder
 from .graph_batch import LINKS, NODES, GraphBatch
@@ -17,7 +16,9 @@ from .stats_collector import StatsCollector
 from .utils import is_example_file, node_span
 
 
-class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
+class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin, ScopeMixin):
+    """Walks one file's AST and queues its classes, functions, constants, calls and imports for the graph."""
+
     def __init__(
         self,
         file_path: str,
@@ -26,7 +27,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         stats_collector: StatsCollector | None = None,
         skip_dunder_methods: bool = True,
         project_roots: set[str] | None = None,
-    ):
+    ) -> None:
         self.file_path: str = file_path
         self.session: Any = session
         self.current_class: str | None = None
@@ -34,7 +35,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self.current_function_line: int = -1  # tells apart same-named functions in one file
         self.is_test_file: bool = is_test_file
         self.is_example_file: bool = is_example_file(file_path)
-        self.current_scope: str = "module"
+        self.current_scope: str = SCOPE_MODULE
         self.skip_dunder_methods: bool = skip_dunder_methods
         self.batch = GraphBatch(file_path)  # this file's writes, sent by flush()
         self.project_roots: set[str] = project_roots or set()  # top-level packages and modules of the scan
@@ -56,29 +57,6 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
             stats_collector if stats_collector is not None else StatsCollector()
         )
 
-    @contextmanager
-    def _scope(
-        self, scope: str, cls: str | None, func: str | None, func_line: int,
-        imports: tuple[set[str], dict[str, str]] | None = None,
-    ) -> Iterator[None]:
-        """Enter a class or function body, restoring the enclosing scope on exit.
-
-        `imports` are the names the body starts with when it is not the current ones (a method does not
-        see the imports of the class body it is written in).
-        """
-        saved = (self.current_scope, self.current_class, self.current_function, self.current_function_line)
-        outer_imports = (self.external_names, self.import_bindings)
-        start = imports or outer_imports
-        self.external_names, self.import_bindings = set(start[0]), dict(start[1])
-        self.current_scope, self.current_class = scope, cls
-        self.current_function, self.current_function_line = func, func_line
-        try:
-            yield
-        finally:
-            self.external_names, self.import_bindings = outer_imports  # imports made inside stay inside
-            (self.current_scope, self.current_class,
-             self.current_function, self.current_function_line) = saved
-
     def _labels(self, kind: str) -> str:
         """Neo4j labels for a Class or Function node, by the kind of file it lives in."""
         if self.is_test_file:
@@ -92,6 +70,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
             self.visit(child)
 
     def visit_Module(self, node: ast.Module) -> None:
+        """Scan the module's bindings and exports, then visit its body."""
         scan = scan_module(node)
         self.module_rebound = scan.untrusted()
         self.blocked_names = set(self.module_rebound)  # module-level calls trust what a function would
@@ -100,6 +79,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        """Queue a Class node, then visit the class body in its own scope."""
         line, end_line, length = node_span(node)
         self.stats.register_class(
             name=node.name,
@@ -113,7 +93,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
             f"UNWIND $rows AS row MERGE (c{self._labels('Class')} "
             "{name: row.name, file: $file, line: row.line, end_line: row.end_line, length: row.length, "
             "nested: row.nested, plain: row.plain})",
-            name=node.name, line=line, end_line=end_line, length=length, nested=self.current_scope != "module",
+            name=node.name, line=line, end_line=end_line, length=length, nested=self.current_scope != SCOPE_MODULE,
             plain=keeps_class(node.decorator_list, self.external_names - self.blocked_names, self.origins),
         )
 
@@ -121,10 +101,10 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         self._visit_all([*node.decorator_list, *node.bases, *node.keywords])
         # A class body is invisible to its methods, and to the classes inside it: they see what is outside it
         outside = (
-            self.class_outer_imports[-1] if self.current_scope == "class"
+            self.class_outer_imports[-1] if self.current_scope == SCOPE_CLASS
             else (set(self.external_names), dict(self.import_bindings))
         )
-        with self._scope("class", node.name, self.current_function, self.current_function_line), \
+        with self._scope(SCOPE_CLASS, node.name, self.current_function, self.current_function_line), \
                 self._class_bindings(node):
             self.class_outer_imports.append(outside)
             try:
@@ -133,13 +113,14 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
                 self.class_outer_imports.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        """Queue a Function node (skipping dunder methods when asked), then visit the body in its own scope."""
         name = node.name
         if self.skip_dunder_methods and name.startswith("__") and name.endswith("__"):
             self.record_skipped_imports(node)
             return
 
         line, end_line, length = node_span(node)
-        owner = self.current_class if self.current_scope == "class" else None
+        owner = self.current_class if self.current_scope == SCOPE_CLASS else None
         full_name = f"{owner}.{name}" if owner else name
 
         self.stats.register_function(
@@ -180,7 +161,7 @@ class CodeAnalyzer(CallsMixin, ConstantsMixin, ImportsMixin):
         if node.returns:
             self.visit(node.returns)
         outside = self.class_outer_imports[-1] if owner else None
-        with self._scope("function", self.current_class, full_name, line, outside), self._bindings(node):
+        with self._scope(SCOPE_FUNCTION, self.current_class, full_name, line, outside), self._bindings(node):
             mark_forwarder(self.batch, node, full_name, line, owner is not None, self.external_names)
             mark_complexity(self.batch, node, full_name, line)
             self._visit_all(node.body)

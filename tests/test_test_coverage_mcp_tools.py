@@ -9,11 +9,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 class TestCoverageMCPTools(unittest.TestCase):
     """Test the MCP tools for test coverage."""
 
-    @patch('codescan_lib.mcp_tools.test_tools.q')
+    @patch('codescan_lib.mcp_tools.test_coverage_tools.q')
     def test_untested_functions(self, mock_q):
         """Test the untested_functions tool."""
         # Import the function to test
-        from codescan_lib.mcp_tools.test_tools import untested_functions
+        from codescan_lib.mcp_tools.test_coverage_tools import untested_functions
 
         # Set up mock return value
         mock_q.return_value = [
@@ -38,11 +38,11 @@ class TestCoverageMCPTools(unittest.TestCase):
         self.assertEqual(result[0]["name"], "untested_func1")
         self.assertEqual(result[1]["file"], "scanner.py")
 
-    @patch('codescan_lib.mcp_tools.test_tools.q')
+    @patch('codescan_lib.mcp_tools.test_coverage_tools.q')
     def test_test_coverage_ratio(self, mock_q):
         """Test the test_coverage_ratio tool."""
         # Import the function to test
-        from codescan_lib.mcp_tools.test_tools import get_test_coverage_ratio
+        from codescan_lib.mcp_tools.test_coverage_tools import get_test_coverage_ratio
 
         # Set up mock return value
         mock_q.return_value = [
@@ -69,11 +69,11 @@ class TestCoverageMCPTools(unittest.TestCase):
         self.assertEqual(result[0]["tested_functions"], 7)
         self.assertEqual(result[0]["coverage_ratio"], 0.7)
 
-    @patch('codescan_lib.mcp_tools.test_tools.q')
+    @patch('codescan_lib.mcp_tools.test_coverage_tools.q')
     def test_functions_tested_by(self, mock_q):
         """Test the functions_tested_by tool."""
         # Import the function to test
-        from codescan_lib.mcp_tools.test_tools import functions_tested_by
+        from codescan_lib.mcp_tools.test_coverage_tools import functions_tested_by
 
         # Set up mock return value
         mock_q.return_value = [
@@ -102,11 +102,11 @@ class TestCoverageMCPTools(unittest.TestCase):
         self.assertEqual(result[1]["tested_file"], "scanner.py")
         self.assertEqual(result[0]["method"], "naming_pattern")
 
-    @patch('codescan_lib.mcp_tools.test_tools.q')
+    @patch('codescan_lib.mcp_tools.test_coverage_tools.q')
     def test_tests_for_function(self, mock_q):
         """Test the tests_for_function tool."""
         # Import the function to test
-        from codescan_lib.mcp_tools.test_tools import get_tests_for_function
+        from codescan_lib.mcp_tools.test_coverage_tools import get_tests_for_function
 
         # Set up mock return value
         mock_q.return_value = [

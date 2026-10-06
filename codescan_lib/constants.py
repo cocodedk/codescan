@@ -41,6 +41,36 @@ TYPE_CHECKING_MODULES = {"typing", "typing_extensions"}  # the modules whose TYP
 TEST_METHOD_NAMING = "naming_pattern"
 TEST_METHOD_CALL = "call"
 
+# Where the analyzer is while it walks a file; stored on Constant nodes as `scope`
+SCOPE_MODULE = "module"
+SCOPE_CLASS = "class"
+SCOPE_FUNCTION = "function"
+
+# The shape of a call, stored on CALLS edges as `kind`
+BARE_CALL = "bare"
+SELF_CALL = "self"
+ATTR_CALL = "attr"
+
+# Receivers that make `receiver.name()` a self call
+RECEIVER_SELF = "self"
+RECEIVER_CLS = "cls"
+SELF_NAMES = (RECEIVER_SELF, RECEIVER_CLS)
+
+# What kind of file a scanned file is (the keys of the by-type counts)
+FILE_TYPE_PRODUCTION = "production"
+FILE_TYPE_TEST = "test"
+FILE_TYPE_EXAMPLE = "example"
+
+# The element counts a scan reports
+STAT_CLASSES = "classes"
+STAT_FUNCTIONS = "functions"
+STAT_CONSTANTS = "constants"
+STAT_CALLS = "calls"
+STAT_IMPORTS = "imports"
+STAT_REFERENCE_FUNCTIONS = "reference_functions"
+STAT_TEST_FUNCTIONS = "test_functions"
+STAT_TEST_CLASSES = "test_classes"
+
 # Decorators known to return the class they decorate (by the module that defines them): a call to such a class builds it
 CLASS_PRESERVING_DECORATORS = {
     "dataclasses.dataclass", "functools.total_ordering", "typing.final", "typing.runtime_checkable", "enum.unique",

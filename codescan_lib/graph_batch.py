@@ -9,6 +9,8 @@ NODES, LINKS = 0, 1
 
 
 class GraphBatch:
+    """Queued rows of one file's graph writes, sent together by flush()."""
+
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
         self._rows: dict[tuple[int, str], list[dict[str, Any]]] = {}

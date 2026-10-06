@@ -27,6 +27,7 @@ class ImportsMixin(ast.NodeVisitor):
     type_checking_depth: int = 0  # above 0 while inside the body of an `if TYPE_CHECKING:`
 
     def visit_Import(self, node: ast.Import) -> None:
+        """Bind and record each imported name."""
         for alias in node.names:
             top = alias.name.split(".")[0]
             self._bind(alias.asname or top, alias.name if alias.asname else top, top, relative=False)
@@ -35,6 +36,7 @@ class ImportsMixin(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        """Bind and record each name a `from` import brings in."""
         module = "." * node.level + (node.module or "")
         package = self._absolute_module(node)
         for alias in node.names:
@@ -47,6 +49,7 @@ class ImportsMixin(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_If(self, node: ast.If) -> None:
+        """Visit an `if`, treating `TYPE_CHECKING` bodies as imports that never run."""
         self._walk_if(node, self)
 
     def _walk_if(self, node: ast.If, visitor: ast.NodeVisitor) -> None:
@@ -145,9 +148,11 @@ class _SkippedImports(ast.NodeVisitor):
         self.owner = owner
 
     def visit_Import(self, node: ast.Import | ast.ImportFrom) -> None:
+        """Record the module imports of a skipped function."""
         self.owner._record_module_imports(node)
 
     visit_ImportFrom = visit_Import
 
     def visit_If(self, node: ast.If) -> None:
+        """Walk an `if` the way the analyzer does."""
         self.owner._walk_if(node, self)

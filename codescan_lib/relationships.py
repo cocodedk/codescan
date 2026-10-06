@@ -15,7 +15,7 @@ from .call_targets import (
     module_scope,
 )
 from .class_targets import ClassDefinition, class_targets
-from .constants import COLOR_CALLS
+from .constants import ATTR_CALL, COLOR_CALLS
 from .graph_batch import LINKS, GraphBatch
 
 # A call edge is found by its own id, so a function caller and a file caller (module-level code) share the rewrite
@@ -73,11 +73,11 @@ def resolve_calls(session: Any) -> None:
     exporters = build_exporters(files)
 
     batch = GraphBatch("")
-    for row in session.run("""
+    for row in session.run(f"""
         MATCH (caller)-[r:CALLS]->(ref:ReferenceFunction) WHERE caller:File OR caller.is_reference = false
         RETURN elementId(caller) AS caller_id, elementId(r) AS edge_id, ref.name AS callee,
                coalesce(caller.file, caller.path) AS caller_file, caller.line AS caller_line,
-               r.line AS line, r.args AS args, r.site AS site, coalesce(r.kind, 'attr') AS kind,
+               r.line AS line, r.args AS args, r.site AS site, coalesce(r.kind, '{ATTR_CALL}') AS kind,
                coalesce(r.recv_class, '') AS recv_class, coalesce(r.recv_module, '') AS recv_module,
                coalesce(r.skip_function, false) AS skip_function, coalesce(r.skip_class, false) AS skip_class
     """):
