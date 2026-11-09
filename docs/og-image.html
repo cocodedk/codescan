@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>Share picture, 1200x630: CodeScan</title>
+<!--
+  Source layout for og.png. Render at exactly 1200x630:
+
+    google-chrome-stable --headless --disable-gpu --no-sandbox \
+      --window-size=1200,630 --hide-scrollbars --virtual-time-budget=8000 \
+      --screenshot=og.png "file:///abs/path/docs/og-image.html"
+
+  The colours are hardcoded on purpose: a share picture must not follow the
+  viewer's colour scheme. The fonts load from Google Fonts at render time only.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;800&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --line: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --blue: #58a6ff;
+    --green: #3fb950;
+    --purple: #a371f7;
+    --orange: #f0883e;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    width: 1200px;
+    height: 630px;
+    overflow: hidden;
+    font-family: "Inter", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+  }
+
+  /* a faint dot grid, the way a graph canvas looks */
+  .card {
+    position: relative;
+    width: 1200px;
+    height: 630px;
+    background-image: radial-gradient(circle, rgba(139, 148, 158, 0.22) 1.5px, transparent 1.6px);
+    background-size: 36px 36px;
+    background-position: 18px 18px;
+  }
+
+  .text {
+    position: absolute;
+    left: 84px;
+    top: 0;
+    width: 540px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .stack {
+    margin: 0 0 26px;
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 0.04em;
+    color: var(--blue);
+  }
+  .stack .sep { color: var(--line); padding: 0 0.5em; }
+
+  h1 {
+    margin: 0;
+    font-size: 124px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+  h1 .scan { color: var(--blue); }
+
+  .sub {
+    margin: 26px 0 0;
+    font-size: 33px;
+    font-weight: 500;
+    line-height: 1.35;
+    color: var(--muted);
+  }
+
+  .by {
+    position: absolute;
+    left: 84px;
+    bottom: 50px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 20px;
+    color: var(--muted);
+  }
+
+  /* a call graph: who calls whom */
+  .graph { position: absolute; left: 668px; top: 80px; width: 520px; height: 470px; }
+  .graph line { stroke-width: 3; stroke-opacity: 0.65; }
+  .graph circle { fill: var(--panel); stroke-width: 4; }
+  .graph text {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 19px;
+    font-weight: 700;
+    fill: var(--text);
+    text-anchor: middle;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="text">
+      <p class="stack">Python<span class="sep">/</span>Neo4j<span class="sep">/</span>MCP</p>
+      <h1>Code<span class="scan">Scan</span></h1>
+      <p class="sub">Python static code analyzer with Neo4j graph integration</p>
+    </div>
+    <p class="by">Babak Bandpey &middot; codescan.cocode.dk</p>
+    <svg class="graph" viewBox="0 0 520 470" aria-hidden="true">
+      <g stroke-linecap="round">
+        <line x1="260" y1="58" x2="148" y2="212" stroke="#58a6ff"/>
+        <line x1="260" y1="58" x2="372" y2="212" stroke="#58a6ff"/>
+        <line x1="148" y1="212" x2="96" y2="388" stroke="#3fb950"/>
+        <line x1="148" y1="212" x2="224" y2="388" stroke="#3fb950"/>
+        <line x1="372" y1="212" x2="330" y2="388" stroke="#a371f7"/>
+        <line x1="372" y1="212" x2="450" y2="388" stroke="#f0883e"/>
+      </g>
+      <circle cx="260" cy="58" r="40" stroke="#58a6ff"/><text x="260" y="64">main</text>
+      <circle cx="148" cy="212" r="40" stroke="#3fb950"/><text x="148" y="218">scan</text>
+      <circle cx="372" cy="212" r="40" stroke="#a371f7"/><text x="372" y="218">store</text>
+      <circle cx="96" cy="388" r="40" stroke="#3fb950"/><text x="96" y="394">parse</text>
+      <circle cx="224" cy="388" r="40" stroke="#3fb950"/><text x="224" y="394">walk</text>
+      <circle cx="330" cy="388" r="40" stroke="#a371f7"/><text x="330" y="394">link</text>
+      <circle cx="450" cy="388" r="40" stroke="#f0883e"/><text x="450" y="394">test</text>
+    </svg>
+  </div>
+</body>
+</html>
